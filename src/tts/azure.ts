@@ -26,6 +26,18 @@ interface ProxyResponse {
   cues?: SpeechCue[];
 }
 
+/**
+ * A dev server (and most static hosts in production, via their SPA rewrite
+ * rule) answers ANY unmatched route with a 200 and the app's own index.html
+ * rather than a 404. Without this check, a HEAD/POST to a not-yet-deployed
+ * /api/tts looks identical to a real proxy responding successfully, so this
+ * provider would get picked over the Web Speech fallback and then fail trying
+ * to parse HTML as the TTS JSON response.
+ */
+function isSpaFallback(response: Response): boolean {
+  return (response.headers.get('content-type') ?? '').includes('text/html');
+}
+
 function randomId(): string {
   return crypto.randomUUID().replaceAll('-', '');
 }
@@ -226,7 +238,7 @@ export class AzureTTSProvider implements TTSProvider {
     if (devDirectConfig()) return true;
     try {
       const response = await fetch(endpointConfig().proxyUrl, { method: 'HEAD' });
-      return response.ok || response.status === 405;
+      return (response.ok || response.status === 405) && !isSpaFallback(response);
     } catch {
       return false;
     }
@@ -246,6 +258,12 @@ export class AzureTTSProvider implements TTSProvider {
       body: JSON.stringify({ text, voice: voiceId, speed }),
     });
     if (!response.ok) throw new Error(`TTS proxy request failed (${response.status}).`);
+    if (isSpaFallback(response)) {
+      throw new Error(
+        `No TTS proxy is deployed at "${endpointConfig().proxyUrl}" -- the request landed on the app's own ` +
+        "index.html instead. This is expected until a real /api/tts backend exists.",
+      );
+    }
     return validateProxyResult(await response.json() as ProxyResponse);
   }
 }
