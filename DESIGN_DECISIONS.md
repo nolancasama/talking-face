@@ -237,3 +237,37 @@ contour cannot predict their extent.
 
 **Rejected.** Simply widening the region to buy margin: that pushes the boundary
 onto the moving jawline, trading a ghosted smile for a visible seam.
+
+---
+
+## 2026-09-07 — Web Speech estimator: vowel-weighted duration and inter-word gaps
+
+**Decision.** `estimate()` in `src/tts/webspeech.ts` now gives vowel-mapped
+letter groups a heavier share of a word's estimated duration (1.7x a
+consonant's) instead of splitting time evenly per letter, and inserts a short
+gap (55ms, speed-scaled) between words. Also fixed `H` resolving to a literal
+`'H'` token, which is not a `PHONEME_TO_MOUTH` key (the table has `HH`) and
+silently fell to the OPEN fallback by accident rather than by the fallback's
+own design.
+
+**Why.** Reported symptom: speaking a real sentence "only opened and closed
+the mouth." Root cause was duration, not mapping. English text is consonant-
+heavy, and this app's own five-state approximation already sends most
+unshaped tongue consonants (T/D/N/K/G/L/H) to OPEN by design (see the
+F/V-to-CLOSED decision above). Splitting a word's duration evenly by letter
+gave every one of those OPEN-mapped consonants the same slice as the word's
+vowel, which is where CLOSED/WIDE/ROUND actually come from. At a 45ms
+crossfade an ~72ms span is barely on screen, so vowel shapes read as
+imperceptible flickers against a dominant OPEN. Weighting toward vowels -- the
+same skew real speech has, since vowels are held and consonants are quick --
+gives WIDE/ROUND/CLOSED spans in the 90-140ms range for ordinary words, well
+clear of both the crossfade and the MIN_SPAN_MS merge floor. The inter-word
+gap adds a REST beat between words so the animation reads as speech rather
+than one continuous span.
+
+**Consequence.** This is still a heuristic over English orthography, not real
+phonetics -- it does not know a word's true pronunciation, only approximates
+one letter at a time. It is measurably better, not solved. The real fix
+remains a provider with genuine viseme timing (Azure, once `/api/tts` is
+deployed); this estimator only exists so the pipeline works with zero
+credentials.
