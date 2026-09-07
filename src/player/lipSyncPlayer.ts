@@ -5,7 +5,8 @@ import {
 } from '../core/articulation';
 import type { Articulation } from '../core/articulation';
 import { articulationAt, mouthAt } from '../core/timeline';
-import type { Avatar, MouthState, MouthTimeline, PlaybackClock } from '../core/types';
+import { ALL_POSES } from '../core/types';
+import type { Avatar, MouthPose, MouthTimeline, PlaybackClock } from '../core/types';
 
 type PausableClock = PlaybackClock & { pause?: () => void };
 type PoseWeight = ReturnType<typeof resolvePoseWeights>[number];
@@ -16,7 +17,8 @@ export interface LipSyncPlayerSnapshot {
   readonly poseWeights: readonly Readonly<PoseWeight>[];
   readonly clockPositionMs: number;
   readonly visualTimeMs: number;
-  readonly activeMouthState: MouthState;
+  readonly activeMouthState: MouthPose;
+  readonly availablePoses: readonly MouthPose[];
 }
 
 /** Renders pre-baked avatar frames against a playback-position master clock. */
@@ -31,7 +33,8 @@ export class LipSyncPlayer {
   private lastClockPositionMs: number | null = null;
   private clockPositionMs = 0;
   private visualTimeMs = VISUAL_LEAD_MS;
-  private activeMouthState: MouthState = 'REST';
+  private activeMouthState: MouthPose = 'REST';
+  private readonly availablePoses: readonly MouthPose[];
 
   constructor(
     private readonly avatar: Avatar,
@@ -42,6 +45,7 @@ export class LipSyncPlayer {
     const context = canvas.getContext('2d');
     if (!context) throw new Error('A 2D canvas context is required for lip-sync playback');
     this.context = context;
+    this.availablePoses = ALL_POSES.filter((pose) => avatar.frames[pose] !== undefined);
     this.sizeCanvas();
     this.resetSmoothing(this.clock.nowMs(), performance.now());
     this.drawResolvedFrames();
@@ -91,6 +95,7 @@ export class LipSyncPlayer {
       clockPositionMs: this.clockPositionMs,
       visualTimeMs: this.visualTimeMs,
       activeMouthState: this.activeMouthState,
+      availablePoses: [...this.availablePoses],
     };
   }
 
@@ -123,7 +128,7 @@ export class LipSyncPlayer {
       elapsedMs,
     );
     this.targetArticulation = targetArticulation;
-    this.currentPoseWeights = resolvePoseWeights(this.currentArticulation);
+    this.currentPoseWeights = resolvePoseWeights(this.currentArticulation, this.availablePoses);
     this.clockPositionMs = clockPositionMs;
     this.visualTimeMs = visualTimeMs;
     this.activeMouthState = mouthAt(this.timeline, visualTimeMs);
@@ -142,7 +147,7 @@ export class LipSyncPlayer {
     const targetArticulation = articulationAt(this.timeline, visualTimeMs);
     this.currentArticulation = { ...targetArticulation };
     this.targetArticulation = targetArticulation;
-    this.currentPoseWeights = resolvePoseWeights(this.currentArticulation);
+    this.currentPoseWeights = resolvePoseWeights(this.currentArticulation, this.availablePoses);
     this.clockPositionMs = clockPositionMs;
     this.visualTimeMs = visualTimeMs;
     this.activeMouthState = mouthAt(this.timeline, visualTimeMs);
@@ -157,17 +162,23 @@ export class LipSyncPlayer {
     const { context } = this;
     context.globalAlpha = 1;
     if (this.currentPoseWeights.length === 1) {
-      context.drawImage(this.avatar.frames[first.state], 0, 0, this.avatar.width, this.avatar.height);
+      context.drawImage(this.frameFor(first.pose), 0, 0, this.avatar.width, this.avatar.height);
       return;
     }
 
     const second = this.currentPoseWeights[1]!;
     const heavier = first.weight >= second.weight ? first : second;
     const lighter = heavier === first ? second : first;
-    context.drawImage(this.avatar.frames[heavier.state], 0, 0, this.avatar.width, this.avatar.height);
+    context.drawImage(this.frameFor(heavier.pose), 0, 0, this.avatar.width, this.avatar.height);
     context.globalAlpha = lighter.weight;
-    context.drawImage(this.avatar.frames[lighter.state], 0, 0, this.avatar.width, this.avatar.height);
+    context.drawImage(this.frameFor(lighter.pose), 0, 0, this.avatar.width, this.avatar.height);
     context.globalAlpha = 1;
+  }
+
+  private frameFor(pose: MouthPose): ImageBitmap {
+    const frame = this.avatar.frames[pose];
+    if (!frame) throw new Error(`Avatar is missing resolved pose frame ${pose}`);
+    return frame;
   }
 
   private sizeCanvas(): void {

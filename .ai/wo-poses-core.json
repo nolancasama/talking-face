@@ -1,0 +1,37 @@
+{
+  "id": "tf-poses-core",
+  "task": "Migrate the alignment, storage, mapping, timeline and renderer from the old five-state mouth vocabulary to the frozen eleven-pose vocabulary, including a versioned storage migration for existing avatars.",
+  "notes": "This app animates a photographed face by blending baked mouth frames against a TTS playback clock. The pose vocabulary just grew from five states (REST/CLOSED/OPEN/WIDE/ROUND) to eleven (REST/CLOSED/SMALL_OPEN/BIG_OPEN/WIDE/ROUND/OPEN_ROUND/TEETH_LIP/TH/SH_CH/L). Note OPEN was RENAMED to BIG_OPEN and is not a new pose.\n\nsrc/core/poses.ts, src/core/articulation.ts, src/core/visemeMap.ts and src/core/types.ts are FROZEN CONTRACTS and are already written. Implement against them exactly; do not edit them. `npm run typecheck` currently fails across the modules this task owns -- those errors ARE the work list.\n\nThe single most important idea to preserve: poses are OPTIONAL. Avatar.frames and StoredAvatar.frames are Partial records with only REST guaranteed. There is deliberately NO fallback table -- poseWeights(articulation, availablePoses) is given the keys the avatar actually has and the distance metric finds the nearest available pose. That one behaviour covers optional extended poses, a capture the user skipped, and a legacy five-pose avatar. Do not add a fallback map; pass availability through instead.\n\nDo not regress the Stage 1 rendering behaviour: the playback clock stays authoritative, every frame derives its target from clock position plus VISUAL_LEAD_MS, smoothing is per-control and frame-rate independent, commitment is duration-proportional, and at most two frames are ever blended.",
+  "requirements": [
+    "src/align/region.ts and src/align/bake.ts: update to the MouthPose vocabulary. bake() must accept a partial set of pose shots and return a partial frame record -- only bake what was captured. computeMouthRegionFromShots must size the region across whatever poses are present, still using each pose's own rigid registration transform, and must not assume any particular pose exists other than REST.",
+    "src/core/visemeMapper.ts: map SpeechToken to MouthPose using AZURE_VISEME_TO_POSE, PHONEME_TO_POSE, R_POSE and FALLBACK_POSE from the frozen visemeMap.ts. Do not restate or fork those tables.",
+    "src/core/timeline.ts: update to MouthPose. Preserve gapless, non-overlapping, strictly increasing spans; merging of adjacent identical poses; duration-proportional commitment via commitmentFor; and the articulation resolution used by the renderer. Short-span absorption must never delete a span whose pose is in PROTECTED_POSES (CLOSED, TEETH_LIP, TH) -- those carry the defining visible features of M/B/P, F/V and TH.",
+    "src/player/lipSyncPlayer.ts: update to MouthPose and pass the avatar's available pose keys into poseWeights so resolution is availability-aware. Preserve the existing compositing rule exactly: draw the heavier frame fully opaque, then the lighter over it at its weight, so total canvas alpha stays 1. Never clear and draw both at complementary alpha. Keep the read-only debug snapshot, extending it with the tongue control and the available pose set.",
+    "src/store/avatarStore.ts: implement schemaVersion 2. Write new avatars at version 2 with partial frame records. On read, migrate a version 1 avatar in memory WITHOUT rewriting it: rename its OPEN frame to BIG_OPEN, keep REST/CLOSED/WIDE/ROUND, and simply omit the poses it does not have. A migrated avatar must play correctly through the availability-aware path.",
+    "Store frames as JPEG rather than PNG, at quality 0.92. The baked frames are fully opaque -- bake() draws the opaque neutral base across the whole frame before compositing the overlay -- so there is no alpha to preserve, and eleven PNG photographs is several times the IndexedDB footprint for no visible gain. Decode on read as before.",
+    "Add a helper on AvatarStore reporting which poses an avatar has and which are missing, so the UI can offer the extended captures later. Do not build UI here.",
+    "Update src/core/timeline.test.ts and src/core/visemeMapper.test.ts to the new vocabulary, and add cases for: an avatar missing an extended pose still resolves to something drawable; a PROTECTED_POSES span survives short-span absorption; a version 1 stored avatar migrates to a playable version 2 shape with OPEN mapped to BIG_OPEN.",
+    "Leave src/ui/ entirely alone apart from whatever is strictly required to keep the project typechecking, and prefer leaving UI errors to the follow-up task over restructuring UI files here."
+  ],
+  "constraints": [
+    "Do NOT modify src/core/poses.ts, src/core/articulation.ts, src/core/visemeMap.ts or src/core/types.ts. They are frozen.",
+    "Do NOT restructure src/ui/screens/capture.ts, preview.ts, inspector.ts or src/ui/debugOverlay.ts. A separate task owns those.",
+    "Do not add dependencies.",
+    "Do not add a pose fallback table. Availability-aware poseWeights is the mechanism.",
+    "Do not begin geometric or landmark-based warping. This task keeps the baked-frame rendering architecture.",
+    "Do not start retaining raw pose photographs. They are still deleted after a successful bake.",
+    "Never drive animation from timers. The playback clock remains the only source of time."
+  ],
+  "startingPoints": ["src/core/poses.ts", "src/core/articulation.ts", "src/core/visemeMap.ts", "src/core/types.ts", "src/core/timeline.ts", "src/player/lipSyncPlayer.ts", "src/store/avatarStore.ts", "src/align/bake.ts", "src/align/region.ts", "DESIGN_DECISIONS.md"],
+  "writeTargets": ["src/align/region.ts", "src/align/bake.ts", "src/core/visemeMapper.ts", "src/core/timeline.ts", "src/player/lipSyncPlayer.ts", "src/store/avatarStore.ts", "src/core/timeline.test.ts", "src/core/visemeMapper.test.ts"],
+  "validation": ["npm run typecheck", "npm test"],
+  "category": "refactor-migration",
+  "complexity": "hard",
+  "bounded": true,
+  "exploration": "none",
+  "risk": "medium",
+  "expectedCost": "large",
+  "executionStyle": "deep-reasoning",
+  "composition": "mixed",
+  "sliceOf": "talking-face-11-poses"
+}

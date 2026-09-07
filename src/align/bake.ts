@@ -1,9 +1,9 @@
 import {
   CAPTURE_POSES,
+  NO_NUDGE,
   type CapturedShot,
-  type CapturePose,
+  type MouthPose,
   type MouthRegion,
-  type MouthState,
   type NudgeOffset,
   type SimilarityTransform,
 } from '../core/types';
@@ -12,29 +12,32 @@ import { solveSimilarityTransform } from './transform';
 type RenderCanvas = OffscreenCanvas | HTMLCanvasElement;
 type RenderContext = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 
-/** Bakes REST plus four aligned pose composites into full-size playback frames. */
+type BakedFrames = Partial<Record<MouthPose, ImageBitmap>> & { REST: ImageBitmap };
+
+/** Bakes REST plus the captured pose composites into full-size playback frames. */
 export async function bake(
   neutral: CapturedShot,
-  poses: Readonly<Record<CapturePose, CapturedShot>>,
+  poses: Readonly<Partial<Record<MouthPose, CapturedShot>>>,
   region: MouthRegion,
-  nudges: Readonly<Record<CapturePose, NudgeOffset>>,
-): Promise<Record<MouthState, ImageBitmap>> {
+  nudges: Readonly<Partial<Record<MouthPose, NudgeOffset>>>,
+): Promise<BakedFrames> {
   validateRegion(region);
   const frameWidth = neutral.image.width;
   const frameHeight = neutral.image.height;
   const mask = buildFeatherMask(region);
   const rest = await copyBitmap(neutral.image, frameWidth, frameHeight);
-  const frames = { REST: rest } as Record<MouthState, ImageBitmap>;
+  const frames: BakedFrames = { REST: rest };
 
   for (const pose of CAPTURE_POSES) {
     const shot = poses[pose];
+    if (!shot) continue;
     const transform = solveSimilarityTransform(shot.landmarks, neutral.landmarks);
     frames[pose] = await compositeFrame(
       neutral.image,
       shot.image,
       transform,
       region,
-      nudges[pose],
+      nudges[pose] ?? NO_NUDGE,
       mask,
       frameWidth,
       frameHeight,

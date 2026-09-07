@@ -1,13 +1,14 @@
 import {
   FRAME_CROSSFADE_MS,
   POSE_ARTICULATION,
+  PROTECTED_POSES,
   commitmentFor,
   mixArticulation,
 } from './articulation';
 import type { Articulation } from './articulation';
 import { MIN_SPAN_MS, TRAILING_REST_MS } from './visemeMap';
 import { mapSpeechToken } from './visemeMapper';
-import type { MouthSpan, MouthState, MouthTimeline, SpeechCue } from './types';
+import type { MouthPose, MouthSpan, MouthTimeline, SpeechCue } from './types';
 
 const spanDuration = (span: MouthSpan): number => span.endMs - span.startMs;
 
@@ -30,7 +31,7 @@ function absorbShortSpans(input: MouthSpan[]): MouthSpan[] {
 
   while (spans.length > 1) {
     const index = spans.findIndex(
-      (span) => span.mouth !== 'CLOSED' && spanDuration(span) < MIN_SPAN_MS,
+      (span) => !PROTECTED_POSES.includes(span.mouth) && spanDuration(span) < MIN_SPAN_MS,
     );
     if (index < 0) break;
 
@@ -96,7 +97,7 @@ export function buildTimeline(cues: readonly SpeechCue[], durationMs: number): M
 }
 
 /** Resolve a time using half-open spans; the timeline endpoint uses its last span. */
-export function mouthAt(timeline: MouthTimeline, ms: number): MouthState {
+export function mouthAt(timeline: MouthTimeline, ms: number): MouthPose {
   if (timeline.length === 0) return 'REST';
   const first = timeline[0]!;
   if (!Number.isFinite(ms) || ms <= first.startMs) return first.mouth;

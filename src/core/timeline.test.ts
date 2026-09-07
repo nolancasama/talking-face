@@ -4,7 +4,11 @@ import {
   POSE_ARTICULATION,
   commitmentFor,
   mixArticulation,
+  poseWeights,
 } from './articulation';
+import { ALL_POSES } from './poses';
+import { migrateStoredAvatar } from '../store/avatarStore';
+import type { LegacyStoredAvatarV1 } from '../store/avatarStore';
 import { TRAILING_REST_MS } from './visemeMap';
 import { articulationAt, buildTimeline, mouthAt } from './timeline';
 import type { MouthTimeline, SpeechCue } from './types';
@@ -19,7 +23,7 @@ describe('buildTimeline', () => {
   it('merges adjacent cues resolving to the same mouth', () => {
     const timeline = buildTimeline([cue(0, 100, 'AA'), cue(100, 200, 'AE')], 320);
     expect(timeline).toEqual([
-      { startMs: 0, endMs: 200, mouth: 'OPEN' },
+      { startMs: 0, endMs: 200, mouth: 'BIG_OPEN' },
       { startMs: 200, endMs: 320, mouth: 'REST' },
     ]);
   });
@@ -37,13 +41,17 @@ describe('buildTimeline', () => {
     ]);
   });
 
-  it('preserves a CLOSED span regardless of duration', () => {
+  it.each([
+    ['M', 'CLOSED'],
+    ['F', 'TEETH_LIP'],
+    ['TH', 'TH'],
+  ] as const)('preserves protected %s spans regardless of duration', (symbol, pose) => {
     const timeline = buildTimeline([
       cue(0, 100, 'AA'),
-      cue(100, 110, 'M'),
+      cue(100, 110, symbol),
       cue(110, 250, 'IY'),
     ], 370);
-    expect(timeline).toContainEqual({ startMs: 100, endMs: 110, mouth: 'CLOSED' });
+    expect(timeline).toContainEqual({ startMs: 100, endMs: 110, mouth: pose });
   });
 
   it('is gapless, non-overlapping, increasing, and duration-bounded', () => {
@@ -69,14 +77,14 @@ describe('buildTimeline', () => {
 
 describe('mouthAt', () => {
   const timeline: MouthTimeline = [
-    { startMs: 0, endMs: 100, mouth: 'OPEN' },
+    { startMs: 0, endMs: 100, mouth: 'BIG_OPEN' },
     { startMs: 100, endMs: 200, mouth: 'ROUND' },
     { startMs: 200, endMs: 300, mouth: 'REST' },
   ];
 
   it('resolves interiors and exact half-open boundaries', () => {
-    expect(mouthAt(timeline, 0)).toBe('OPEN');
-    expect(mouthAt(timeline, 99.999)).toBe('OPEN');
+    expect(mouthAt(timeline, 0)).toBe('BIG_OPEN');
+    expect(mouthAt(timeline, 99.999)).toBe('BIG_OPEN');
     expect(mouthAt(timeline, 100)).toBe('ROUND');
     expect(mouthAt(timeline, 200)).toBe('REST');
     expect(mouthAt(timeline, 300)).toBe('REST');
@@ -98,27 +106,27 @@ describe('articulationAt', () => {
 
   it('lands a brief span strictly between the previous pose and its reference pose', () => {
     const timeline: MouthTimeline = [
-      { startMs: 0, endMs: 200, mouth: 'OPEN' },
+      { startMs: 0, endMs: 200, mouth: 'BIG_OPEN' },
       { startMs: 200, endMs: 240, mouth: 'ROUND' },
     ];
     const resolved = articulationAt(timeline, 200 + FRAME_CROSSFADE_MS);
     const expected = mixArticulation(
-      POSE_ARTICULATION.OPEN,
+      POSE_ARTICULATION.BIG_OPEN,
       POSE_ARTICULATION.ROUND,
       commitmentFor('ROUND', 40),
     );
 
     expect(resolved).toEqual(expected);
-    expect(resolved.lipRound).toBeGreaterThan(POSE_ARTICULATION.OPEN.lipRound);
+    expect(resolved.lipRound).toBeGreaterThan(POSE_ARTICULATION.BIG_OPEN.lipRound);
     expect(resolved.lipRound).toBeLessThan(POSE_ARTICULATION.ROUND.lipRound);
   });
 
   it('reaches full closure even for a span shorter than the frame crossfade', () => {
     const boundary = 200 + FRAME_CROSSFADE_MS / 2;
     const timeline: MouthTimeline = [
-      { startMs: 0, endMs: 200, mouth: 'OPEN' },
+      { startMs: 0, endMs: 200, mouth: 'BIG_OPEN' },
       { startMs: 200, endMs: boundary, mouth: 'CLOSED' },
-      { startMs: boundary, endMs: 400, mouth: 'OPEN' },
+      { startMs: boundary, endMs: 400, mouth: 'BIG_OPEN' },
     ];
 
     expect(articulationAt(timeline, boundary)).toEqual(POSE_ARTICULATION.CLOSED);
@@ -126,12 +134,44 @@ describe('articulationAt', () => {
 
   it('is continuous across a span boundary', () => {
     const timeline: MouthTimeline = [
-      { startMs: 0, endMs: 200, mouth: 'OPEN' },
+      { startMs: 0, endMs: 200, mouth: 'BIG_OPEN' },
       { startMs: 200, endMs: 400, mouth: 'ROUND' },
     ];
     const justBefore = articulationAt(timeline, 199.999);
     const atBoundary = articulationAt(timeline, 200);
 
     expect(atBoundary).toEqual(justBefore);
+  });
+});
+
+describe('legacy avatar migration', () => {
+  it('maps OPEN to BIG_OPEN and remains drawable through available poses', () => {
+    const rest = new Blob(['rest'], { type: 'image/png' });
+    const closed = new Blob(['closed'], { type: 'image/png' });
+    const open = new Blob(['open'], { type: 'image/png' });
+    const wide = new Blob(['wide'], { type: 'image/png' });
+    const round = new Blob(['round'], { type: 'image/png' });
+    const legacy = {
+      schemaVersion: 1,
+      id: 'legacy',
+      createdAt: 1,
+      width: 100,
+      height: 100,
+      frames: { REST: rest, CLOSED: closed, OPEN: open, WIDE: wide, ROUND: round },
+      region: { x: 0, y: 0, width: 10, height: 10, feather: 2 },
+      nudge: { OPEN: { dx: 1, dy: 2, scale: 1.1 } },
+    } satisfies LegacyStoredAvatarV1;
+
+    const migrated = migrateStoredAvatar(legacy);
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.frames.BIG_OPEN).toBe(open);
+    expect('OPEN' in migrated.frames).toBe(false);
+    expect(migrated.nudge.BIG_OPEN).toEqual({ dx: 1, dy: 2, scale: 1.1 });
+    expect(legacy.frames.OPEN).toBe(open);
+
+    const available = ALL_POSES.filter((pose) => migrated.frames[pose] !== undefined);
+    const weights = poseWeights(POSE_ARTICULATION.TH, available);
+    expect(weights.length).toBeGreaterThan(0);
+    for (const entry of weights) expect(migrated.frames[entry.pose]).toBeInstanceOf(Blob);
   });
 });

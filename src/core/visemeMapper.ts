@@ -1,24 +1,27 @@
 import {
-  AZURE_VISEME_TO_MOUTH,
-  FALLBACK_MOUTH,
-  PHONEME_TO_MOUTH,
+  AZURE_VISEME_TO_POSE,
+  FALLBACK_POSE,
+  PHONEME_TO_POSE,
+  R_POSE,
 } from './visemeMap';
-import type { MouthState, SpeechToken } from './types';
+import type { MouthPose, SpeechToken } from './types';
 
-/** Resolve a provider token to one of the avatar's five baked mouth states. */
-export function mapSpeechToken(token: SpeechToken): MouthState {
+/** Resolve a provider token to the canonical mouth-pose vocabulary. */
+export function mapSpeechToken(token: SpeechToken): MouthPose {
   if (token.kind === 'silence') return 'REST';
 
   if (token.kind === 'phoneme') {
     const symbol = token.symbol.trim().replace(/\d/g, '').toUpperCase();
-    return PHONEME_TO_MOUTH[symbol] ?? FALLBACK_MOUTH;
+    if (symbol === 'R') return R_POSE;
+    return PHONEME_TO_POSE[symbol] ?? FALLBACK_POSE;
   }
 
   if (token.provider.toLowerCase() === 'azure') {
-    return AZURE_VISEME_TO_MOUTH[token.id] ?? FALLBACK_MOUTH;
+    if (token.id === 13) return R_POSE;
+    return AZURE_VISEME_TO_POSE[token.id] ?? FALLBACK_POSE;
   }
 
-  return FALLBACK_MOUTH;
+  return FALLBACK_POSE;
 }
 
 /** Kept as a convenient viseme-oriented name for provider implementations. */

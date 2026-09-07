@@ -1,4 +1,4 @@
-import type { CapturePose, CapturedShot, FaceLandmarks, MouthRegion, Point } from '../core/types';
+import type { CapturedShot, FaceLandmarks, MouthPose, MouthRegion, Point } from '../core/types';
 import { CAPTURE_POSES } from '../core/types';
 import { apply, solveSimilarityTransform } from './transform';
 
@@ -17,18 +17,19 @@ export const REGION_FEATHER_FRACTION = 0.18;
  *
  * Sizing from the neutral shot alone under-covers by construction: the poses
  * exist precisely because they are more extreme than neutral. A WIDE (EEE)
- * smile is wider and an OPEN (AHH) jaw is lower than anything the neutral lip
+ * smile is wider and a BIG_OPEN (AHH) jaw is lower than anything the neutral lip
  * contour predicts, so each pose's lips and chin are mapped into neutral space
  * through its own registration transform and the union drives the geometry.
  */
 export function computeMouthRegionFromShots(
   neutral: CapturedShot,
-  poses: Readonly<Record<CapturePose, CapturedShot>>,
+  poses: Readonly<Partial<Record<MouthPose, CapturedShot>>>,
 ): MouthRegion {
   const points: Point[] = [...neutral.landmarks.lipContour, neutral.landmarks.chin];
 
   for (const pose of CAPTURE_POSES) {
     const shot = poses[pose];
+    if (!shot) continue;
     const toNeutral = solveSimilarityTransform(shot.landmarks, neutral.landmarks);
     for (const point of shot.landmarks.lipContour) points.push(apply(toNeutral, point));
     points.push(apply(toNeutral, shot.landmarks.chin));
