@@ -1,15 +1,13 @@
+import type { MouthPose } from './poses';
+
 // FROZEN CONTRACT. Every module below src/ implements or consumes these types.
 // Do not change a signature here without updating DESIGN_DECISIONS.md first --
 // four independent modules are written against this file.
 
-/** The five visual states an avatar can be in. REST is the untouched selfie. */
-export type MouthState = 'REST' | 'CLOSED' | 'OPEN' | 'WIDE' | 'ROUND';
-
-/** The four poses the user photographs in addition to the neutral selfie. */
-export type CapturePose = 'CLOSED' | 'OPEN' | 'WIDE' | 'ROUND';
-
-export const MOUTH_STATES: readonly MouthState[] = ['REST', 'CLOSED', 'OPEN', 'WIDE', 'ROUND'];
-export const CAPTURE_POSES: readonly CapturePose[] = ['CLOSED', 'OPEN', 'WIDE', 'ROUND'];
+// The pose vocabulary lives in ./poses. Re-exported here so consumers of the
+// contract get one import, but poses.ts remains the single source of truth.
+export type { MouthPose } from './poses';
+export { ALL_POSES, CORE_POSES, EXTENDED_POSES, CAPTURE_POSES } from './poses';
 
 // ---------------------------------------------------------------------------
 // Capture
@@ -122,20 +120,39 @@ export interface Avatar {
   createdAt: number;
   width: number;
   height: number;
-  frames: Record<MouthState, ImageBitmap>;
+  /**
+   * Baked frames, keyed by pose. PARTIAL by design: the extended poses are
+   * optional, a user may skip one, and a legacy avatar predates most of them.
+   * `poseWeights` is given the available keys and finds the nearest thing the
+   * avatar actually has, so absence needs no fallback table. REST is always
+   * present -- it is the neutral selfie.
+   */
+  frames: Partial<Record<MouthPose, ImageBitmap>> & { REST: ImageBitmap };
   region: MouthRegion;
-  nudge: Record<CapturePose, NudgeOffset>;
+  nudge: Partial<Record<MouthPose, NudgeOffset>>;
 }
 
 /** Storage form of an Avatar. Raw pose photos are deliberately NOT retained. */
 export interface StoredAvatar {
+  /**
+   * Schema version. 1 = the original five-pose vocabulary (REST/CLOSED/OPEN/
+   * WIDE/ROUND, PNG frames). 2 = the eleven-pose vocabulary. An avatar is
+   * migrated on read rather than rewritten in place, so a version 1 avatar
+   * keeps working and the user is offered the extra poses instead of being
+   * made to re-capture.
+   */
+  schemaVersion: number;
   id: string;
   createdAt: number;
   width: number;
   height: number;
-  frames: Record<MouthState, Blob>;
+  /** See Avatar.frames. Stored as JPEG: the baked frames are fully opaque
+   *  (an opaque base with the overlay composited onto it), so there is no
+   *  alpha to preserve, and eleven PNG photographs is several times the
+   *  IndexedDB footprint for no visible gain. */
+  frames: Partial<Record<MouthPose, Blob>> & { REST: Blob };
   region: MouthRegion;
-  nudge: Record<CapturePose, NudgeOffset>;
+  nudge: Partial<Record<MouthPose, NudgeOffset>>;
 }
 
 export interface Preferences {
@@ -207,7 +224,7 @@ export interface TTSProvider {
 export interface MouthSpan {
   startMs: number;
   endMs: number;
-  mouth: MouthState;
+  mouth: MouthPose;
 }
 
 export type MouthTimeline = readonly MouthSpan[];

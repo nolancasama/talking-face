@@ -5,7 +5,9 @@ import {
   mixArticulation,
   poseWeights,
   smoothToward,
+  articulationDistance,
 } from './articulation';
+import { ALL_POSES, CORE_POSES } from './poses';
 
 describe('commitmentFor', () => {
   it('commits fully to a sustained span', () => {
@@ -31,16 +33,38 @@ describe('commitmentFor', () => {
 });
 
 describe('poseWeights', () => {
-  it('resolves a reference pose to itself', () => {
-    for (const state of ['REST', 'CLOSED', 'OPEN', 'WIDE', 'ROUND'] as const) {
-      const weights = poseWeights(POSE_ARTICULATION[state]);
-      expect(weights[0]?.state).toBe(state);
+  it('resolves every reference pose to itself', () => {
+    for (const pose of ALL_POSES) {
+      const weights = poseWeights(POSE_ARTICULATION[pose]);
+      expect(weights[0]?.pose).toBe(pose);
       expect(weights[0]?.weight).toBe(1);
     }
   });
 
+  it('falls back to the nearest AVAILABLE pose when one is missing', () => {
+    // An avatar with only the core set asked for a TH articulation must not
+    // return TH, and must still return something drawable.
+    const weights = poseWeights(POSE_ARTICULATION.TH, CORE_POSES);
+    expect(weights.length).toBeGreaterThan(0);
+    for (const entry of weights) expect(CORE_POSES).toContain(entry.pose);
+  });
+
+  it('keeps every pose pair separable enough to resolve stably', () => {
+    // TH and L differ only by tongue position; without that control they
+    // collapsed to 0.05 apart against a ~0.8 median and flickered randomly.
+    let worst = Infinity;
+    for (let i = 0; i < ALL_POSES.length; i += 1) {
+      for (let j = i + 1; j < ALL_POSES.length; j += 1) {
+        const a = POSE_ARTICULATION[ALL_POSES[i]!];
+        const b = POSE_ARTICULATION[ALL_POSES[j]!];
+        worst = Math.min(worst, articulationDistance(a, b));
+      }
+    }
+    expect(worst).toBeGreaterThan(0.25);
+  });
+
   it('blends at most two reference poses', () => {
-    const halfway = mixArticulation(POSE_ARTICULATION.REST, POSE_ARTICULATION.OPEN, 0.5);
+    const halfway = mixArticulation(POSE_ARTICULATION.REST, POSE_ARTICULATION.BIG_OPEN, 0.5);
     expect(poseWeights(halfway).length).toBeLessThanOrEqual(2);
   });
 
