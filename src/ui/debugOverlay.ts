@@ -1,6 +1,6 @@
 import { VISUAL_LEAD_MS } from '../core/articulation';
 import type { Articulation } from '../core/articulation';
-import type { MouthState, MouthTimeline } from '../core/types';
+import type { MouthPose, MouthTimeline } from '../core/types';
 import type { LipSyncPlayer } from '../player/lipSyncPlayer';
 
 const DEBUG_STORAGE_KEY = 'talking-face:debug';
@@ -9,14 +9,21 @@ const ARTICULATION_KEYS = [
   'lipWidth',
   'lipRound',
   'lipClosure',
+  'tongue',
 ] as const satisfies readonly (keyof Articulation)[];
 
-const TIMELINE_COLOURS: Readonly<Record<MouthState, string>> = {
+const TIMELINE_COLOURS: Readonly<Record<MouthPose, string>> = {
   REST: '#64748b',
   CLOSED: '#f43f5e',
-  OPEN: '#f59e0b',
+  SMALL_OPEN: '#fb923c',
+  BIG_OPEN: '#f59e0b',
   WIDE: '#22c55e',
   ROUND: '#8b5cf6',
+  OPEN_ROUND: '#a855f7',
+  TEETH_LIP: '#06b6d4',
+  TH: '#ec4899',
+  SH_CH: '#3b82f6',
+  L: '#10b981',
 };
 
 /** DEV-only switch. `?debug=1` enables it persistently; `?debug=0` clears it. */
@@ -56,6 +63,7 @@ export interface DebugSession {
 export class DebugOverlay {
   private readonly root = document.createElement('aside');
   private readonly stateValue = document.createElement('strong');
+  private readonly posesValue = document.createElement('span');
   private readonly clockValue = document.createElement('span');
   private readonly visualValue = document.createElement('span');
   private readonly weightsValue = document.createElement('span');
@@ -93,6 +101,7 @@ export class DebugOverlay {
       this.controls.set(key, { value, fill, target });
     }
 
+    const poses = this.makeMetric('poses', this.posesValue);
     const weights = this.makeMetric('weights', this.weightsValue);
     const clock = this.makeMetric('clock', this.clockValue, ' ms');
     const visual = this.makeMetric('visual', this.visualValue, ' ms');
@@ -111,7 +120,7 @@ export class DebugOverlay {
       item.append(swatch, state);
       legend.append(item);
     }
-    this.root.append(heading, controls, weights, clock, visual, lead, this.timelineCanvas, legend);
+    this.root.append(heading, controls, poses, weights, clock, visual, lead, this.timelineCanvas, legend);
   }
 
   mount(host: HTMLElement): void {
@@ -145,10 +154,11 @@ export class DebugOverlay {
 
     const snapshot = session.player.getSnapshot();
     this.stateValue.textContent = snapshot.activeMouthState;
+    this.posesValue.textContent = snapshot.availablePoses.join(' ');
     this.clockValue.textContent = snapshot.clockPositionMs.toFixed(1);
     this.visualValue.textContent = snapshot.visualTimeMs.toFixed(1);
     this.weightsValue.textContent = snapshot.poseWeights
-      .map(({ state, weight }) => `${state} ${weight.toFixed(3)}`)
+      .map(({ pose, weight }) => `${pose} ${weight.toFixed(3)}`)
       .join(' + ');
 
     for (const key of ARTICULATION_KEYS) {
@@ -166,6 +176,7 @@ export class DebugOverlay {
 
   private renderIdle(): void {
     this.stateValue.textContent = 'IDLE';
+    this.posesValue.textContent = '—';
     this.clockValue.textContent = '—';
     this.visualValue.textContent = '—';
     this.weightsValue.textContent = '—';
@@ -199,7 +210,7 @@ export class DebugOverlay {
     const duration = timeline.at(-1)?.endMs ?? 0;
     if (!(duration > 0)) return;
     for (const span of timeline) {
-      context.fillStyle = TIMELINE_COLOURS[span.mouth];
+      context.fillStyle = TIMELINE_COLOURS[span.mouth] ?? '#64748b';
       context.fillRect(
         (span.startMs / duration) * width,
         0,

@@ -1,22 +1,17 @@
 import { bake } from '../../align/bake';
 import { computeMouthRegionFromShots } from '../../align/region';
+import { ALL_POSES, POSE_PROMPTS } from '../../core/poses';
 import {
-  CAPTURE_POSES,
-  MOUTH_STATES,
   type Avatar,
   type CapturedShot,
-  type CapturePose,
-  type MouthState,
+  type MouthPose,
+  type MouthRegion,
   type NudgeOffset,
 } from '../../core/types';
 import type { AvatarStore } from '../../store/avatarStore';
 import type { Navigator, Screen } from '../router';
 import { CaptureScreen } from './capture';
 import { TalkScreen } from './talk';
-
-const DISPLAY_NAMES: Record<MouthState, string> = {
-  REST: 'Relaxed', CLOSED: 'Closed', OPEN: 'Open', WIDE: 'Smile', ROUND: 'Round',
-};
 
 export class PreviewScreen implements Screen {
   private timer: number | null = null;
@@ -29,14 +24,28 @@ export class PreviewScreen implements Screen {
   constructor(
     private readonly store: AvatarStore,
     private readonly neutral: CapturedShot,
-    private readonly poses: Record<CapturePose, CapturedShot>,
+    private readonly poses: Partial<Record<MouthPose, CapturedShot>>,
+    private readonly existingAvatar?: Avatar,
   ) {}
 
   async mount(host: HTMLElement, nav: Navigator): Promise<void> {
     this.mounted = true;
-    const region = computeMouthRegionFromShots(this.neutral, this.poses);
-    const nudges = Object.fromEntries(CAPTURE_POSES.map((pose) => [pose, { dx: 0, dy: 0, scale: 1 }])) as Record<CapturePose, NudgeOffset>;
-    let activePose: CapturePose = 'CLOSED';
+    const availablePoses: MouthPose[] = ALL_POSES.filter(
+      (pose) => pose === 'REST' || this.poses[pose] !== undefined,
+    );
+    const nonRestPoses: MouthPose[] = availablePoses.filter((p) => p !== 'REST');
+
+    const region: MouthRegion = this.existingAvatar?.region ?? computeMouthRegionFromShots(this.neutral, this.poses);
+    const nudges: Partial<Record<MouthPose, NudgeOffset>> = {
+      ...(this.existingAvatar?.nudge ?? {}),
+    };
+    for (const pose of nonRestPoses) {
+      if (!nudges[pose]) {
+        nudges[pose] = { dx: 0, dy: 0, scale: 1 };
+      }
+    }
+
+    let activePose: MouthPose = nonRestPoses[0] ?? 'REST';
     let stateIndex = 0;
 
     const screen = document.createElement('section');
@@ -63,10 +72,10 @@ export class PreviewScreen implements Screen {
     const poseSelect = document.createElement('select');
     poseSelect.className = 'field-control';
     poseSelect.setAttribute('aria-label', 'Photo to adjust');
-    for (const pose of CAPTURE_POSES) {
+    for (const pose of nonRestPoses) {
       const option = document.createElement('option');
       option.value = pose;
-      option.textContent = DISPLAY_NAMES[pose];
+      option.textContent = POSE_PROMPTS[pose].title;
       poseSelect.append(option);
     }
     panel.append(poseSelect);
@@ -91,6 +100,10 @@ export class PreviewScreen implements Screen {
     addSlider('dy', 'Y', '-40', '40', '1');
     addSlider('scale', 'Size', '0.85', '1.15', '0.01');
 
+    if (nonRestPoses.length === 0) {
+      adjust.hidden = true;
+    }
+
     const error = document.createElement('p');
     error.className = 'capture-feedback';
     error.setAttribute('role', 'status');
@@ -111,25 +124,40 @@ export class PreviewScreen implements Screen {
 
     const draw = (): void => {
       if (!this.frames) return;
-      const state = MOUTH_STATES[stateIndex] ?? 'REST';
-      const frame = this.frames[state];
+      const pose = availablePoses[stateIndex] ?? 'REST';
+      const frame = this.frames[pose] ?? this.frames.REST;
       if (canvas.width !== frame.width || canvas.height !== frame.height) {
         canvas.width = frame.width;
         canvas.height = frame.height;
       }
       canvas.getContext('2d')?.drawImage(frame, 0, 0);
-      stateLabel.textContent = DISPLAY_NAMES[state];
+      stateLabel.textContent = POSE_PROMPTS[pose].title;
     };
+
     const replaceFrames = async (): Promise<void> => {
       const version = ++this.bakeVersion;
       error.textContent = '';
       try {
-        const nextFrames = await bake(this.neutral, this.poses, region, nudges);
+        const newlyBaked = await bake(this.neutral, this.poses, region, nudges);
         if (!this.mounted || version !== this.bakeVersion) {
-          MOUTH_STATES.forEach((state) => nextFrames[state].close());
+          for (const key of Object.keys(newlyBaked) as MouthPose[]) {
+            newlyBaked[key]?.close();
+          }
           return;
         }
-        if (this.frames) MOUTH_STATES.forEach((state) => this.frames?.[state].close());
+
+        const nextFrames: Avatar['frames'] = {
+          ...(this.existingAvatar ? this.existingAvatar.frames : {}),
+          ...newlyBaked,
+        };
+
+        if (this.frames) {
+          for (const pose of Object.keys(this.frames) as MouthPose[]) {
+            if (this.frames[pose] && this.frames[pose] !== this.existingAvatar?.frames[pose]) {
+              this.frames[pose]!.close();
+            }
+          }
+        }
         this.frames = nextFrames;
         good.disabled = false;
         draw();
@@ -137,12 +165,15 @@ export class PreviewScreen implements Screen {
         error.textContent = "We couldn't prepare the preview. Please retake your photos.";
       }
     };
+
     const syncSliders = (): void => {
-      const values = nudges[activePose];
+      if (activePose === 'REST') return;
+      const values = nudges[activePose] ?? { dx: 0, dy: 0, scale: 1 };
       sliders.get('dx')!.value = String(values.dx);
       sliders.get('dy')!.value = String(values.dy);
       sliders.get('scale')!.value = String(values.scale);
     };
+
     const scheduleBake = (): void => {
       if (this.rebakeTimer !== null) window.clearTimeout(this.rebakeTimer);
       this.rebakeTimer = window.setTimeout(() => {
@@ -150,30 +181,37 @@ export class PreviewScreen implements Screen {
         void replaceFrames();
       }, 80);
     };
+
     poseSelect.addEventListener('change', () => {
-      activePose = poseSelect.value as CapturePose;
-      stateIndex = MOUTH_STATES.indexOf(activePose);
+      activePose = poseSelect.value as MouthPose;
+      stateIndex = availablePoses.indexOf(activePose);
       syncSliders();
       draw();
     });
+
     for (const [key, input] of sliders) {
       input.addEventListener('input', () => {
-        nudges[activePose][key] = Number(input.value);
+        if (activePose === 'REST') return;
+        if (!nudges[activePose]) nudges[activePose] = { dx: 0, dy: 0, scale: 1 };
+        nudges[activePose]![key] = Number(input.value);
         scheduleBake();
       });
     }
+
     adjust.addEventListener('click', () => {
       panel.hidden = !panel.hidden;
       adjust.setAttribute('aria-expanded', String(!panel.hidden));
     });
+
     retake.addEventListener('click', () => void nav.go(new CaptureScreen(this.store), { replace: true }));
+
     good.addEventListener('click', async () => {
       if (!this.frames) return;
       good.disabled = true;
       good.textContent = 'Saving…';
       const avatar: Avatar = {
-        id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`,
-        createdAt: Date.now(),
+        id: this.existingAvatar?.id ?? globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`,
+        createdAt: this.existingAvatar?.createdAt ?? Date.now(),
         width: this.neutral.image.width,
         height: this.neutral.image.height,
         frames: this.frames,
@@ -194,8 +232,14 @@ export class PreviewScreen implements Screen {
     syncSliders();
     await replaceFrames();
     this.timer = window.setInterval(() => {
-      stateIndex = (stateIndex + 1) % MOUTH_STATES.length;
+      stateIndex = (stateIndex + 1) % availablePoses.length;
       draw();
+      const currentPose = availablePoses[stateIndex];
+      if (currentPose && currentPose !== 'REST') {
+        activePose = currentPose;
+        poseSelect.value = currentPose;
+        syncSliders();
+      }
     }, 500);
   }
 
@@ -207,7 +251,15 @@ export class PreviewScreen implements Screen {
     if (this.rebakeTimer !== null) window.clearTimeout(this.rebakeTimer);
     this.rebakeTimer = null;
     this.neutral.image.close();
-    CAPTURE_POSES.forEach((pose) => this.poses[pose].image.close());
-    if (!this.handedOff && this.frames) MOUTH_STATES.forEach((state) => this.frames?.[state].close());
+    for (const pose of Object.keys(this.poses) as MouthPose[]) {
+      this.poses[pose]?.image.close();
+    }
+    if (!this.handedOff && this.frames) {
+      for (const pose of Object.keys(this.frames) as MouthPose[]) {
+        if (this.frames[pose] && this.frames[pose] !== this.existingAvatar?.frames[pose]) {
+          this.frames[pose]!.close();
+        }
+      }
+    }
   }
 }

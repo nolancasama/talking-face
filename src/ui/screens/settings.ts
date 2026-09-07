@@ -1,3 +1,4 @@
+import { detect } from '../../align/landmarks';
 import type { Avatar } from '../../core/types';
 import type { AvatarStore } from '../../store/avatarStore';
 import type { Navigator, Screen } from '../router';
@@ -17,6 +18,40 @@ export class SettingsScreen implements Screen {
     const title = document.createElement('h1');
     title.className = 'h1';
     title.textContent = 'Settings';
+
+    const availability = this.store.getPoseAvailability(this.avatar);
+    const missingPoses = availability.missing.filter((p) => p !== 'REST');
+
+    let upgradeBtn: HTMLButtonElement | null = null;
+    if (missingPoses.length > 0) {
+      upgradeBtn = document.createElement('button');
+      upgradeBtn.className = 'btn btn--block upgrade-button';
+      upgradeBtn.type = 'button';
+      upgradeBtn.textContent = 'Improve lip sync';
+      upgradeBtn.addEventListener('click', async () => {
+        if (!upgradeBtn) return;
+        upgradeBtn.disabled = true;
+        try {
+          const neutralDetection = await detect(this.avatar.frames.REST);
+          if (!neutralDetection.landmarks) {
+            throw new Error('Could not detect neutral face');
+          }
+          await nav.go(
+            new CaptureScreen(this.store, {
+              posesToCapture: missingPoses,
+              existingAvatar: this.avatar,
+              initialNeutral: {
+                image: this.avatar.frames.REST,
+                landmarks: neutralDetection.landmarks,
+              },
+            }),
+          );
+        } catch {
+          upgradeBtn.disabled = false;
+        }
+      });
+    }
+
     const privacy = document.createElement('div');
     privacy.className = 'settings-card';
     const privacyTitle = document.createElement('h2');
@@ -33,7 +68,7 @@ export class SettingsScreen implements Screen {
     confirm.className = 'confirm-card';
     confirm.hidden = true;
     const question = document.createElement('p');
-    question.textContent = 'Delete this face and take five new photos?';
+    question.textContent = 'Delete this face and take new photos?';
     const confirmActions = document.createElement('div');
     confirmActions.className = 'confirm-actions';
     const cancel = document.createElement('button');
@@ -59,7 +94,12 @@ export class SettingsScreen implements Screen {
         yes.disabled = false;
       }
     });
-    screen.append(back, title, privacy, redo, confirm);
+
+    screen.append(back, title);
+    if (upgradeBtn) {
+      screen.append(upgradeBtn);
+    }
+    screen.append(privacy, redo, confirm);
     host.append(screen);
   }
 }

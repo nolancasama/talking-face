@@ -1,0 +1,38 @@
+{
+  "id": "tf-poses-ui",
+  "task": "Update the capture flow, preview, inspector and debug overlay for the eleven-pose vocabulary, including an incremental path for adding the optional poses to an avatar that already exists.",
+  "notes": "This app makes a user's photographed face appear to speak. The pose vocabulary grew from five to eleven. Note OPEN was RENAMED to BIG_OPEN and SMALL_OPEN is a genuinely new pose.\n\n`npm run typecheck` currently fails only in the four UI files this task owns (capture.ts, preview.ts, inspector.ts, debugOverlay.ts). Those errors are the work list. Everything else in the project already compiles and its tests pass; do not touch it.\n\nThe governing idea: poses are OPTIONAL. src/core/poses.ts splits them into CORE_POSES (six, required for a working avatar) and EXTENDED_POSES (five, opt-in). Avatar.frames is a Partial record with only REST guaranteed. An avatar with just the core set is fully valid and must play correctly -- the renderer already falls back through the articulation distance metric, so a missing pose needs no special handling in UI.\n\nThis matters for the user experience, which is the point of the split: eleven mandatory photographs is a long way to walk before a first-time user (often a child) sees anything work at all, and the extended poses are also the hardest to photograph well. Six gets them a talking face; the rest is an upgrade they choose.\n\nAll user-facing copy comes from POSE_PROMPTS in src/core/poses.ts. Never invent pose copy, and never let a pose id, phonetic term or the words viseme/phoneme/landmark reach the screen.",
+  "requirements": [
+    "src/ui/screens/capture.ts: drive the capture sequence from CORE_POSES then EXTENDED_POSES, using POSE_PROMPTS for every title and instruction. Progress must read against the run actually being performed -- '3 / 6' during a core run, not '3 / 11'.",
+    "After the sixth (last core) pose, show a clear decision point: the avatar is ready to use, or the user can continue with the extra poses for better lip sync. Continuing must feel optional and low-pressure, and finishing early must produce a working avatar immediately.",
+    "Keep the camera stream alive across pose steps within one capture run. Today the screen acquires and releases getUserMedia per step; across eleven steps that is eleven camera restarts and it feels broken. Acquire once, reuse across steps, and release reliably when the run ends or the screen unmounts. Do not leak the stream on back-navigation or an early exit.",
+    "Keep the existing framing guide fixed across all poses so the user does not re-centre between shots, and show a compact progress strip or dots in addition to the numeric counter.",
+    "Preserve every existing capture quality gate and its friendly rejection copy, and keep rejecting an individual bad pose without discarding the poses already captured.",
+    "src/ui/screens/preview.ts: bake and preview whatever partial set was captured. Cycle only through poses the avatar actually has. The Adjust panel must target the currently previewed pose. Do not assume any pose other than REST exists.",
+    "Add an incremental upgrade path: from settings (or the talk screen), a user whose avatar lacks extended poses can capture just the missing ones and have them baked and merged into the existing avatar. Use AvatarStore.getPoseAvailability() to decide what to offer. This must NOT require re-capturing existing poses, and must not disturb REST -- the whole avatar is aligned to it.",
+    "Word that entry point for a normal person: something like 'Improve lip sync', never a pose count or technical framing. If every pose is already captured, do not show it at all.",
+    "src/ui/screens/inspector.ts: show all poses the avatar has, in canonical order, in the existing grid / flip / difference-against-REST views. Handle a partial set without empty tiles or errors, and label which poses are absent so the developer can tell 'not captured' from 'captured badly'.",
+    "src/ui/debugOverlay.ts: add the tongue control to the articulation readout alongside jaw/width/round/closure, using the same bar treatment, and show which poses this avatar actually has. Keep it reading the player's read-only snapshot each frame and keep it off unless DEV and the ?debug=1 toggle are both on.",
+    "Styling stays in src/ui/screens/screens.css using existing tokens. Every control keeps the --tap minimum target, and the capture screen must not scroll vertically on a small phone in portrait."
+  ],
+  "constraints": [
+    "Do NOT modify src/core/, src/player/, src/align/ or src/store/. They are frozen or already migrated and their tests pass.",
+    "Do not add dependencies and do not introduce a UI framework. Plain DOM and TypeScript.",
+    "Do not change rendering, smoothing, timing or the viseme mapping.",
+    "No pose ids and no phonetic vocabulary in user-facing strings; all copy comes from POSE_PROMPTS.",
+    "Do not make the extended poses mandatory, and do not block finishing after the core set.",
+    "Debug UI must remain unreachable in a production build or for an ordinary user.",
+    "Handle camera permission denial with a clear message and a retry affordance rather than a thrown error."
+  ],
+  "startingPoints": ["src/core/poses.ts", "src/ui/screens/capture.ts", "src/ui/screens/preview.ts", "src/ui/screens/inspector.ts", "src/ui/debugOverlay.ts", "src/store/avatarStore.ts", "src/ui/screens/screens.css"],
+  "writeTargets": ["src/ui/screens/capture.ts", "src/ui/screens/preview.ts", "src/ui/screens/inspector.ts", "src/ui/debugOverlay.ts", "src/ui/screens/settings.ts", "src/ui/screens/talk.ts", "src/ui/screens/screens.css"],
+  "validation": ["npm run typecheck", "npm test"],
+  "category": "ui",
+  "complexity": "medium",
+  "bounded": true,
+  "exploration": "none",
+  "risk": "low",
+  "expectedCost": "large",
+  "composition": "atomic",
+  "sliceOf": "talking-face-11-poses"
+}
