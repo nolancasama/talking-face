@@ -1,0 +1,83 @@
+/* Design tokens and the phone shell. Component styles belong beside their
+   screens; anything in here is shared by every screen. */
+:root {
+  color-scheme: dark;
+  --bg: #0e1116;
+  --surface: #171b22;
+  --surface-2: #212734;
+  --line: #2c3342;
+  --text: #f2f5fa;
+  --text-dim: #9aa4b5;
+  --accent: #4c8dff;
+  --accent-press: #3a72d8;
+  --danger: #ff6b6b;
+  --ok: #46d18a;
+
+  --r-lg: 22px;
+  --r-md: 14px;
+  --r-pill: 999px;
+  --pad: 20px;
+  --gap: 16px;
+  --tap: 56px; /* minimum touch target */
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #06080b;
+  color: var(--text);
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* Mobile portrait is the real target. On tablet and desktop we centre a
+   phone-sized column rather than stretching controls across the viewport. */
+.phone {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  padding: max(env(safe-area-inset-top), 12px) var(--pad)
+           max(env(safe-area-inset-bottom), 16px);
+  gap: var(--gap);
+}
+
+@media (min-width: 900px) {
+  body { display: grid; place-items: center; }
+  .phone {
+    min-height: min(920px, 94dvh);
+    border-radius: 32px;
+    border: 1px solid var(--line);
+    overflow: hidden;
+  }
+}
+
+button { font: inherit; color: inherit; }
+
+.btn {
+  min-height: var(--tap);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 650;
+  font-size: 17px;
+  padding: 0 26px;
+  cursor: pointer;
+  transition: background .12s ease, transform .06s ease;
+}
+.btn:active { background: var(--accent-press); transform: scale(.985); }
+.btn:disabled { opacity: .45; cursor: default; transform: none; }
+.btn--ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+.btn--block { width: 100%; }
+
+.h1 { font-size: 28px; font-weight: 700; letter-spacing: -.02em; margin: 0; }
+.hint { color: var(--text-dim); margin: 0; }
+.spacer { flex: 1; }

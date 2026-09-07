@@ -1,0 +1,19 @@
+{
+  "id": "talking-face-v1",
+  "task": "Build a mobile-first PWA that animates a user's photographed face in sync with TTS speech using five baked mouth states",
+  "slices": [
+    { "id": "contract", "task": "Decide the five-state model, alignment strategy, viseme mapping, clock abstraction and credential policy; freeze src/core/types.ts", "keep": true },
+    { "id": "align", "task": "FaceAlignment: MediaPipe landmarks, Umeyama similarity fit on rigid points, jaw-inclusive crop, feathered mask, bake five composite frames",
+      "dependsOn": ["contract"], "volume": 6, "complexity": "hard", "bounded": true, "exploration": "none", "risk": "medium", "expectedCost": "medium",
+      "startingPoints": ["src/core/types.ts", "src/align/", "src/capture/"], "validation": ["npm run typecheck", "npm test"] },
+    { "id": "speech", "task": "TTSProvider implementations, VisemeMapper, LipSyncTimeline merging, PlaybackClock and LipSyncPlayer",
+      "dependsOn": ["contract"], "volume": 10, "complexity": "medium", "bounded": true, "exploration": "none", "risk": "low", "expectedCost": "medium",
+      "startingPoints": ["src/core/types.ts", "src/core/visemeMap.ts", "src/tts/config.ts", "src/player/"], "validation": ["npm run typecheck", "npm test"] },
+    { "id": "ui", "task": "Screens: welcome, five capture steps, preview with Adjust, talk screen, settings",
+      "dependsOn": ["contract"], "volume": 9, "complexity": "medium", "bounded": true, "exploration": "none", "risk": "low", "expectedCost": "large",
+      "startingPoints": ["src/ui/router.ts", "src/ui/styles.css", "src/main.ts"], "validation": ["npm run typecheck"] },
+    { "id": "store", "task": "AvatarStore over IndexedDB plus PWA icons and offline shell",
+      "dependsOn": ["contract"], "volume": 4, "complexity": "easy", "bounded": true, "exploration": "none", "risk": "low", "expectedCost": "small",
+      "startingPoints": ["src/store/", "vite.config.ts"], "validation": ["npm run typecheck"] }
+  ]
+}
