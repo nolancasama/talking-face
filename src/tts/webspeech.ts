@@ -130,12 +130,21 @@ class SpeechSynthesisPlayback implements ExternalPlayback {
   private anchorSpeechMs = 0;
   private ended = false;
   private paused = false;
+  /**
+   * Estimated-time milliseconds to advance per real millisecond. The character
+   * count estimate is crude and commonly off by a wide factor from the voice's
+   * real pace, so without this the mouth finishes its whole timeline while the
+   * synthesiser is still talking. Learned from consecutive word boundaries.
+   */
+  private paceScale = 1;
+  private lastBoundaryWallMs = 0;
+  private lastBoundarySpeechMs = 0;
+  private hasBoundary = false;
 
   constructor(
     private readonly text: string,
     private readonly voiceId: string,
     private readonly speed: number,
-    private readonly cues: SpeechCue[],
     private readonly words: WordTiming[],
     private readonly estimatedDurationMs: number,
   ) {}
@@ -147,10 +156,12 @@ class SpeechSynthesisPlayback implements ExternalPlayback {
     this.startedAt = performance.now();
     this.anchorWallMs = this.startedAt;
     this.anchorSpeechMs = 0;
+    this.paceScale = 1;
+    this.hasBoundary = false;
     const utterance = new SpeechSynthesisUtterance(this.text);
     utterance.rate = Math.max(0.1, Math.min(10, this.speed));
     utterance.voice = browserVoices().find((voice) => voice.voiceURI === this.voiceId) ?? null;
-    utterance.onboundary = (event) => this.correctAtBoundary(event.charIndex, event.elapsedTime * 1000);
+    utterance.onboundary = (event) => this.correctAtBoundary(event.charIndex);
     utterance.onend = () => this.finish();
     utterance.onerror = () => this.finish();
     this.utterance = utterance;
@@ -187,7 +198,7 @@ class SpeechSynthesisPlayback implements ExternalPlayback {
     if (this.ended) return this.estimatedDurationMs;
     if (!this.utterance) return 0;
     if (this.paused) return this.anchorSpeechMs;
-    const elapsed = performance.now() - this.anchorWallMs;
+    const elapsed = (performance.now() - this.anchorWallMs) * this.paceScale;
     return Math.max(0, Math.min(this.estimatedDurationMs, this.anchorSpeechMs + elapsed));
   }
 
@@ -195,29 +206,53 @@ class SpeechSynthesisPlayback implements ExternalPlayback {
     this.callbacks.add(cb);
   }
 
-  private correctAtBoundary(charIndex: number, actualMs: number): void {
-    const wordIndex = this.words.findIndex((word, index) => {
+  /**
+   * Re-anchor the clock when the synthesiser reports a word boundary.
+   *
+   * This deliberately ignores the event's `elapsedTime`. Its unit is not
+   * reliable across browsers -- the spec says seconds, but engines have
+   * shipped milliseconds -- and reading it in the wrong unit multiplies the
+   * anchor by 1000, which slams the clock past the end of the timeline on the
+   * first boundary and leaves the mouth parked on the trailing REST span for
+   * the rest of the utterance.
+   *
+   * None of that value is needed. The event already carries the one fact that
+   * matters: this word is starting NOW. The timeline is frozen in estimate
+   * coordinates, so the correct anchor is simply that word's estimated start.
+   * Position then advances in wall time until the next boundary re-anchors it,
+   * bounding drift to a single word's length regardless of how far the
+   * estimate is from the synthesiser's real pace.
+   *
+   * Note the cue objects are intentionally left alone: buildTimeline copies
+   * the spans it derives, so mutating cues here would change nothing that is
+   * actually rendered.
+   */
+  private correctAtBoundary(charIndex: number): void {
+    const word = this.words.find((candidate, index) => {
       const next = this.words[index + 1];
-      return charIndex >= word.charIndex && (!next || charIndex < next.charIndex);
+      return charIndex >= candidate.charIndex && (!next || charIndex < next.charIndex);
     });
-    if (wordIndex < 0) return;
-    const word = this.words[wordIndex];
     if (!word) return;
-    const delta = actualMs - word.startMs;
-    for (let index = word.cueStart; index < this.cues.length; index += 1) {
-      const cue = this.cues[index];
-      if (!cue) continue;
-      cue.startMs = Math.max(0, cue.startMs + delta);
-      cue.endMs = Math.max(cue.startMs, cue.endMs + delta);
+    const now = performance.now();
+
+    // Two boundaries give the voice's real pace against the estimate: how much
+    // estimated time was meant to pass versus how much really did. Clamped,
+    // because a repeated or out-of-order boundary would otherwise produce a
+    // wild or negative ratio.
+    if (this.hasBoundary) {
+      const realDelta = now - this.lastBoundaryWallMs;
+      const estimatedDelta = word.startMs - this.lastBoundarySpeechMs;
+      if (realDelta > 1 && estimatedDelta > 0) {
+        const observed = estimatedDelta / realDelta;
+        this.paceScale = Math.min(4, Math.max(0.25, observed));
+      }
     }
-    for (let index = wordIndex; index < this.words.length; index += 1) {
-      const timing = this.words[index];
-      if (!timing) continue;
-      timing.startMs += delta;
-      timing.endMs += delta;
-    }
-    this.anchorSpeechMs = actualMs;
-    this.anchorWallMs = performance.now();
+
+    this.anchorSpeechMs = word.startMs;
+    this.anchorWallMs = now;
+    this.lastBoundaryWallMs = now;
+    this.lastBoundarySpeechMs = word.startMs;
+    this.hasBoundary = true;
   }
 
   private finish(): void {
@@ -250,7 +285,6 @@ export class WebSpeechTTSProvider implements TTSProvider {
         text,
         voiceId,
         speed,
-        estimateResult.cues,
         estimateResult.words,
         estimateResult.durationMs,
       ),

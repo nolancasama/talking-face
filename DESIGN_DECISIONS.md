@@ -271,3 +271,43 @@ one letter at a time. It is measurably better, not solved. The real fix
 remains a provider with genuine viseme timing (Azure, once `/api/tts` is
 deployed); this estimator only exists so the pipeline works with zero
 credentials.
+
+---
+
+## 2026-09-07 — Web Speech clock re-anchors on word boundaries, ignoring elapsedTime
+
+**Decision.** `SpeechSynthesisPlayback` no longer reads
+`SpeechSynthesisEvent.elapsedTime`. On each word boundary it re-anchors the
+clock to that word's own estimated start position, and learns a `paceScale`
+from consecutive boundaries to interpolate between them.
+
+**Why.** `elapsedTime`'s unit is not reliable across engines -- the spec says
+seconds, but browsers have shipped milliseconds. The previous code did
+`elapsedTime * 1000`, so under the millisecond reading the anchor came out
+1000x too large. `positionMs()` clamps to the estimated duration, so the very
+first word boundary parked the clock on the timeline's trailing REST span for
+the remainder of the utterance: the avatar opened its mouth once, closed it,
+and went still while the voice kept talking. It presented as "it only opens
+and closes."
+
+The event's timestamp was never actually needed. The boundary already carries
+the fact that matters -- *this word is starting now* -- and the timeline is
+frozen in estimate coordinates, so that word's estimated start is the correct
+anchor. This removes the cross-browser unit ambiguity entirely rather than
+trying to detect which unit was meant.
+
+`paceScale` exists because the character-count estimate is routinely off by a
+large factor from a voice's real speed (measured around 0.63 on a typical
+sentence). Without it the mouth completes the whole timeline well before the
+audio finishes. It is clamped to [0.25, 4] so a repeated or out-of-order
+boundary cannot produce a wild or negative rate.
+
+**Also fixed.** The correction used to mutate the `SpeechCue` objects.
+`buildTimeline` copies the spans it derives, so those mutations changed
+nothing that renders -- dead code against a frozen timeline. The cue
+dependency is gone.
+
+**Residual limitation.** Drift within a single word is still bounded only by
+that word's length, and the first word runs on an unlearned pace. Real viseme
+timing from a provider remains the actual fix; this estimator exists so the
+pipeline works with no credentials.
