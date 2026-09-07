@@ -20,9 +20,28 @@
     "Only the text to be spoken may leave the device. Never send image data to a TTS service.",
     "Do not build UI. This slice is pure modules under src/tts/, src/player/ and src/core/."
   ],
-  "startingPoints": ["src/core/types.ts", "src/core/visemeMap.ts", "src/tts/config.ts", "src/player/", "DESIGN_DECISIONS.md"],
-  "writeTargets": ["src/tts/azure.ts", "src/tts/webspeech.ts", "src/tts/index.ts", "src/core/visemeMapper.ts", "src/core/timeline.ts", "src/player/clock.ts", "src/player/lipSyncPlayer.ts", "src/**/*.test.ts"],
-  "validation": ["npm run typecheck", "npm test"],
+  "startingPoints": [
+    "src/core/types.ts",
+    "src/core/visemeMap.ts",
+    "src/tts/config.ts",
+    "src/player/",
+    "DESIGN_DECISIONS.md"
+  ],
+  "writeTargets": [
+    "src/tts/azure.ts",
+    "src/tts/webspeech.ts",
+    "src/tts/index.ts",
+    "src/core/visemeMapper.ts",
+    "src/core/timeline.ts",
+    "src/player/clock.ts",
+    "src/player/lipSyncPlayer.ts",
+    "src/core/visemeMapper.test.ts",
+    "src/core/timeline.test.ts"
+  ],
+  "validation": [
+    "npm run typecheck",
+    "npm test"
+  ],
   "category": "audio-sync",
   "complexity": "medium",
   "bounded": true,
