@@ -5,3 +5,7 @@ dev-dist/
 .env.local
 *.local
 .DS_Store
+
+# Vendored on-device model assets: large, immutable, and reproduced by
+# `npm run setup:models` (which postinstall runs automatically).
+public/models/

@@ -23,15 +23,24 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // The landmark model is large and immutable: cache it on first use so a
-        // built avatar keeps working offline.
-        globPatterns: ['**/*.{js,css,html,png,svg,wasm}'],
-        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
+        // Precache the app shell only. The landmark assets are deliberately NOT
+        // precached: the three WASM variants are ~11MB each and only one is ever
+        // loaded (SIMD vs no-SIMD is decided at runtime), so precaching them
+        // would cost ~33MB of install-time download to use a third of it. They
+        // are cached on first use instead, which is the moment the user starts
+        // the capture flow, and an avatar that has been built keeps working
+        // offline thereafter.
+        globPatterns: ['**/*.{js,css,html,png,svg}'],
+        globIgnores: ['**/models/**'],
         runtimeCaching: [
           {
-            urlPattern: /\/models\/.*\.(task|wasm|binarypb)$/,
+            urlPattern: ({ url }) => url.pathname.startsWith('/models/'),
             handler: 'CacheFirst',
-            options: { cacheName: 'face-models', expiration: { maxEntries: 8 } },
+            options: {
+              cacheName: 'face-models',
+              expiration: { maxEntries: 12 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
           },
         ],
       },
