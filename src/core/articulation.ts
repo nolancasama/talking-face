@@ -28,11 +28,20 @@ export interface Articulation {
   lipClosure: number;
 }
 
-/** Reference articulation for each baked pose. */
+/**
+ * Reference articulation for each baked pose.
+ *
+ * OPEN sits at 0.8 rather than a full 1.0 because it does double duty: it is
+ * both the wide-open AHH vowel and the fallback for every consonant with no
+ * distinctive lip shape (T/D/N/K/G/L/H). Runs of those consonants merge into
+ * one long OPEN span, and rendering such a span at maximum gape holds the face
+ * at full AHH for a quarter second on a word like "Hello". 0.8 is the low end
+ * of the usable band and keeps a consonant run from reading as a yawn.
+ */
 export const POSE_ARTICULATION: Readonly<Record<MouthState, Articulation>> = {
   REST:   { jawOpen: 0,    lipWidth: 0.30, lipRound: 0,   lipClosure: 0.10 },
   CLOSED: { jawOpen: 0,    lipWidth: 0.25, lipRound: 0,   lipClosure: 1    },
-  OPEN:   { jawOpen: 1,    lipWidth: 0.45, lipRound: 0.1, lipClosure: 0    },
+  OPEN:   { jawOpen: 0.8,  lipWidth: 0.45, lipRound: 0.1, lipClosure: 0    },
   WIDE:   { jawOpen: 0.35, lipWidth: 1,    lipRound: 0,   lipClosure: 0    },
   ROUND:  { jawOpen: 0.40, lipWidth: 0.20, lipRound: 1,   lipClosure: 0    },
 };

@@ -57,6 +57,7 @@ export const PHONEME_TO_MOUTH: Readonly<Record<string, MouthState>> = {
 export const FALLBACK_MOUTH: MouthState = 'OPEN';
 
 // Timeline shaping constants. Tuned for "readable at arm's length on a phone".
-export const MIN_SPAN_MS = 70;      // spans shorter than this are absorbed
-export const CROSSFADE_MS = 45;     // 30-60ms band from the spec
+// Partial articulation commitment now handles brief spans more gracefully than
+// absorption alone, so retain more of the timeline's phonetic detail.
+export const MIN_SPAN_MS = 45;
 export const TRAILING_REST_MS = 120; // settle back to REST after the last cue

@@ -1,13 +1,37 @@
-import { crossfadeAt } from '../core/timeline';
+import {
+  VISUAL_LEAD_MS,
+  poseWeights as resolvePoseWeights,
+  smoothArticulation,
+} from '../core/articulation';
+import type { Articulation } from '../core/articulation';
+import { articulationAt, mouthAt } from '../core/timeline';
 import type { Avatar, MouthState, MouthTimeline, PlaybackClock } from '../core/types';
 
 type PausableClock = PlaybackClock & { pause?: () => void };
+type PoseWeight = ReturnType<typeof resolvePoseWeights>[number];
+
+export interface LipSyncPlayerSnapshot {
+  readonly currentArticulation: Readonly<Articulation>;
+  readonly targetArticulation: Readonly<Articulation>;
+  readonly poseWeights: readonly Readonly<PoseWeight>[];
+  readonly clockPositionMs: number;
+  readonly visualTimeMs: number;
+  readonly activeMouthState: MouthState;
+}
 
 /** Renders pre-baked avatar frames against a playback-position master clock. */
 export class LipSyncPlayer {
   private readonly context: CanvasRenderingContext2D;
   private animationFrame: number | null = null;
   private runId = 0;
+  private currentArticulation!: Articulation;
+  private targetArticulation!: Articulation;
+  private currentPoseWeights: PoseWeight[] = [];
+  private lastRenderedAtMs: number | null = null;
+  private lastClockPositionMs: number | null = null;
+  private clockPositionMs = 0;
+  private visualTimeMs = VISUAL_LEAD_MS;
+  private activeMouthState: MouthState = 'REST';
 
   constructor(
     private readonly avatar: Avatar,
@@ -19,7 +43,8 @@ export class LipSyncPlayer {
     if (!context) throw new Error('A 2D canvas context is required for lip-sync playback');
     this.context = context;
     this.sizeCanvas();
-    this.drawMouth('REST');
+    this.resetSmoothing(this.clock.nowMs(), performance.now());
+    this.drawResolvedFrames();
     clock.onEnd(() => this.handleEnd());
   }
 
@@ -28,8 +53,8 @@ export class LipSyncPlayer {
     this.cancelFrame();
     await this.clock.start();
     if (runId !== this.runId) return;
-    this.drawCurrentFrame();
-    this.animationFrame = requestAnimationFrame(() => this.tick(runId));
+    this.resetAndDrawCurrent(performance.now());
+    this.animationFrame = requestAnimationFrame((timestamp) => this.tick(runId, timestamp));
   }
 
   pause(): void {
@@ -48,48 +73,101 @@ export class LipSyncPlayer {
     ++this.runId;
     this.cancelFrame();
     this.clock.stop();
-    this.drawMouth('REST');
+    this.resetAndDrawCurrent(performance.now());
   }
 
   /** Re-apply sizing after a device-pixel-ratio or layout change. */
   resize(): void {
     this.sizeCanvas();
-    this.drawCurrentFrame();
+    this.drawCurrentFrame(performance.now());
   }
 
-  private tick(runId: number): void {
+  /** Return a coherent, mutation-safe snapshot of the latest rendered frame. */
+  getSnapshot(): LipSyncPlayerSnapshot {
+    return {
+      currentArticulation: { ...this.currentArticulation },
+      targetArticulation: { ...this.targetArticulation },
+      poseWeights: this.currentPoseWeights.map((entry) => ({ ...entry })),
+      clockPositionMs: this.clockPositionMs,
+      visualTimeMs: this.visualTimeMs,
+      activeMouthState: this.activeMouthState,
+    };
+  }
+
+  private tick(runId: number, timestampMs: number): void {
     if (runId !== this.runId || !this.clock.playing()) {
       this.animationFrame = null;
       return;
     }
-    this.drawCurrentFrame();
-    this.animationFrame = requestAnimationFrame(() => this.tick(runId));
+    this.drawCurrentFrame(timestampMs);
+    this.animationFrame = requestAnimationFrame((timestamp) => this.tick(runId, timestamp));
   }
 
-  private drawCurrentFrame(): void {
-    const blend = crossfadeAt(this.timeline, this.clock.nowMs());
-    if (blend.from === blend.to || blend.t >= 1) {
-      this.drawMouth(blend.to);
+  private drawCurrentFrame(renderedAtMs: number): void {
+    const clockPositionMs = this.clock.nowMs();
+    if (this.lastClockPositionMs !== null && clockPositionMs < this.lastClockPositionMs) {
+      this.resetSmoothing(clockPositionMs, renderedAtMs);
+      this.drawResolvedFrames();
       return;
     }
 
-    // Cross-dissolve, NOT two half-transparent draws. The outgoing frame goes
-    // down fully opaque and the incoming one fades in over it, which keeps the
-    // canvas at alpha 1 throughout. Clearing first and drawing at complementary
-    // alphas instead leaves total alpha at t + (1-t)^2 -- 0.75 at the midpoint --
-    // so the page background shows through the face on every mouth change.
-    // Both frames are opaque full-frame composites, so no clear is needed.
-    const { context } = this;
-    context.globalAlpha = 1;
-    context.drawImage(this.avatar.frames[blend.from], 0, 0, this.avatar.width, this.avatar.height);
-    context.globalAlpha = blend.t;
-    context.drawImage(this.avatar.frames[blend.to], 0, 0, this.avatar.width, this.avatar.height);
-    context.globalAlpha = 1;
+    const visualTimeMs = clockPositionMs + VISUAL_LEAD_MS;
+    const targetArticulation = articulationAt(this.timeline, visualTimeMs);
+    const elapsedMs = this.lastRenderedAtMs === null
+      ? 0
+      : Math.max(0, renderedAtMs - this.lastRenderedAtMs);
+
+    this.currentArticulation = smoothArticulation(
+      this.currentArticulation,
+      targetArticulation,
+      elapsedMs,
+    );
+    this.targetArticulation = targetArticulation;
+    this.currentPoseWeights = resolvePoseWeights(this.currentArticulation);
+    this.clockPositionMs = clockPositionMs;
+    this.visualTimeMs = visualTimeMs;
+    this.activeMouthState = mouthAt(this.timeline, visualTimeMs);
+    this.lastRenderedAtMs = renderedAtMs;
+    this.lastClockPositionMs = clockPositionMs;
+    this.drawResolvedFrames();
   }
 
-  private drawMouth(mouth: MouthState): void {
-    this.context.globalAlpha = 1;
-    this.context.drawImage(this.avatar.frames[mouth], 0, 0, this.avatar.width, this.avatar.height);
+  private resetAndDrawCurrent(renderedAtMs: number): void {
+    this.resetSmoothing(this.clock.nowMs(), renderedAtMs);
+    this.drawResolvedFrames();
+  }
+
+  private resetSmoothing(clockPositionMs: number, renderedAtMs: number): void {
+    const visualTimeMs = clockPositionMs + VISUAL_LEAD_MS;
+    const targetArticulation = articulationAt(this.timeline, visualTimeMs);
+    this.currentArticulation = { ...targetArticulation };
+    this.targetArticulation = targetArticulation;
+    this.currentPoseWeights = resolvePoseWeights(this.currentArticulation);
+    this.clockPositionMs = clockPositionMs;
+    this.visualTimeMs = visualTimeMs;
+    this.activeMouthState = mouthAt(this.timeline, visualTimeMs);
+    this.lastRenderedAtMs = renderedAtMs;
+    this.lastClockPositionMs = clockPositionMs;
+  }
+
+  private drawResolvedFrames(): void {
+    const first = this.currentPoseWeights[0];
+    if (!first) return;
+
+    const { context } = this;
+    context.globalAlpha = 1;
+    if (this.currentPoseWeights.length === 1) {
+      context.drawImage(this.avatar.frames[first.state], 0, 0, this.avatar.width, this.avatar.height);
+      return;
+    }
+
+    const second = this.currentPoseWeights[1]!;
+    const heavier = first.weight >= second.weight ? first : second;
+    const lighter = heavier === first ? second : first;
+    context.drawImage(this.avatar.frames[heavier.state], 0, 0, this.avatar.width, this.avatar.height);
+    context.globalAlpha = lighter.weight;
+    context.drawImage(this.avatar.frames[lighter.state], 0, 0, this.avatar.width, this.avatar.height);
+    context.globalAlpha = 1;
   }
 
   private sizeCanvas(): void {
@@ -113,6 +191,6 @@ export class LipSyncPlayer {
   private handleEnd(): void {
     ++this.runId;
     this.cancelFrame();
-    this.drawMouth('REST');
+    this.resetAndDrawCurrent(performance.now());
   }
 }

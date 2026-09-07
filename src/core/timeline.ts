@@ -1,16 +1,13 @@
 import {
-  CROSSFADE_MS,
-  MIN_SPAN_MS,
-  TRAILING_REST_MS,
-} from './visemeMap';
+  FRAME_CROSSFADE_MS,
+  POSE_ARTICULATION,
+  commitmentFor,
+  mixArticulation,
+} from './articulation';
+import type { Articulation } from './articulation';
+import { MIN_SPAN_MS, TRAILING_REST_MS } from './visemeMap';
 import { mapSpeechToken } from './visemeMapper';
 import type { MouthSpan, MouthState, MouthTimeline, SpeechCue } from './types';
-
-export interface MouthCrossfade {
-  from: MouthState;
-  to: MouthState;
-  t: number;
-}
 
 const spanDuration = (span: MouthSpan): number => span.endMs - span.startMs;
 
@@ -32,7 +29,9 @@ function absorbShortSpans(input: MouthSpan[]): MouthSpan[] {
   let spans = mergeAdjacent(input);
 
   while (spans.length > 1) {
-    const index = spans.findIndex((span) => spanDuration(span) < MIN_SPAN_MS);
+    const index = spans.findIndex(
+      (span) => span.mouth !== 'CLOSED' && spanDuration(span) < MIN_SPAN_MS,
+    );
     if (index < 0) break;
 
     const current = spans[index]!;
@@ -118,31 +117,41 @@ export function mouthAt(timeline: MouthTimeline, ms: number): MouthState {
   return last.mouth;
 }
 
-/** Return the active boundary crossfade, or a settled state when outside one. */
-export function crossfadeAt(timeline: MouthTimeline, ms: number): MouthCrossfade {
-  const to = mouthAt(timeline, ms);
-  if (timeline.length < 2 || !Number.isFinite(ms)) return { from: to, to, t: 1 };
-
-  let low = 1;
-  let high = timeline.length - 1;
-  while (low <= high) {
-    const middle = (low + high) >>> 1;
-    if (timeline[middle]!.startMs <= ms) low = middle + 1;
-    else high = middle - 1;
+/**
+ * Resolve the timeline's target articulation at a playback position.
+ *
+ * Each span commits from the previous span's effective endpoint rather than
+ * from its baked reference pose. Real boundaries then blend toward that
+ * endpoint over the short photographic-frame crossfade window.
+ */
+export function articulationAt(timeline: MouthTimeline, ms: number): Articulation {
+  if (timeline.length === 0 || !Number.isFinite(ms)) {
+    return { ...POSE_ARTICULATION.REST };
   }
 
-  const index = high;
-  if (index > 0) {
-    const current = timeline[index]!;
-    const elapsed = ms - current.startMs;
-    if (elapsed >= 0 && elapsed < CROSSFADE_MS) {
-      return {
-        from: timeline[index - 1]!.mouth,
-        to: current.mouth,
-        t: elapsed / CROSSFADE_MS,
-      };
+  let previous = POSE_ARTICULATION.REST;
+  for (let index = 0; index < timeline.length; index += 1) {
+    const span = timeline[index]!;
+    const committed = mixArticulation(
+      previous,
+      POSE_ARTICULATION[span.mouth],
+      commitmentFor(span.mouth, spanDuration(span)),
+    );
+
+    if (ms < span.endMs || index === timeline.length - 1) {
+      // The first span has no real incoming boundary. Resolving it immediately
+      // also lets a reset at position zero start at the correct articulation.
+      if (index === 0 || ms >= span.startMs + FRAME_CROSSFADE_MS) {
+        return committed;
+      }
+
+      const transitionDuration = Math.min(FRAME_CROSSFADE_MS, spanDuration(span));
+      if (!(transitionDuration > 0)) return committed;
+      return mixArticulation(previous, committed, (ms - span.startMs) / transitionDuration);
     }
+
+    previous = committed;
   }
 
-  return { from: to, to, t: 1 };
+  return { ...previous };
 }

@@ -352,3 +352,21 @@ contours from the baked frames themselves (they are aligned photographs) at
 load time, which needs no re-capture -- but it is a schema change, not a
 rendering tweak, and it should follow evidence from Stage 1 rather than precede
 it.
+
+**Post-implementation finding.** Tracing "Hello, how are you?" through the built
+pipeline showed the merged `OPEN@0-264` span holding the jaw at maximum gape
+for a quarter second. OPEN does double duty -- the wide AHH vowel and the
+fallback for every consonant with no distinctive lip shape -- so a consonant
+run renders at full AHH. `POSE_ARTICULATION.OPEN.jawOpen` dropped 1.0 -> 0.8
+in response.
+
+That adjustment is, however, mostly latent in Stage 1: with pure frame
+blending the parameters reach the screen only through `poseWeights`, and a
+sustained OPEN span still resolves to OPEN at weight 1 and draws the AHH
+photograph outright. `jawOpen` gains an independent rendering effect only when
+Stage 2 gives it geometry to drive. The honest Stage 1 fix for the remaining
+over-articulation is to let the mapper carry an intensity alongside the state,
+so an OPEN from a consonant fallback commits less far than an OPEN from a true
+open vowel -- no new photographs, just a continuous weight. Deliberately not
+done yet: it is a contract change across the mapper, timeline and renderer,
+and it should follow visual evidence rather than precede it.

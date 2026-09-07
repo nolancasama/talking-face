@@ -1,0 +1,37 @@
+{
+  "id": "tf-articulation",
+  "task": "Refactor the lip-sync renderer and timeline to drive the avatar from continuous articulation parameters instead of hard-switching between five baked photographs.",
+  "notes": "This app animates a photographed face by showing baked mouth frames in time with TTS audio. Today the renderer picks one of five complete frames per span and hard-switches, which moves jaw, chin, cheeks, skin texture and lighting all at once and reads as photographs being swapped rather than a face speaking.\n\nsrc/core/articulation.ts is a FROZEN CONTRACT that already implements the model: the four continuous controls, the reference articulation per pose, per-control smoothing rates, duration-proportional commitment, and resolution to blend weights over at most two frames. Implement against it exactly; do NOT edit it, and do not restate its constants anywhere else.\n\nThe non-negotiable architectural rule, unchanged: the playback clock stays authoritative. Every frame derives its TARGET articulation from clock position. Never drive animation from setTimeout/setInterval, and never make the target a function of elapsed frames rather than clock time.\n\nOne deliberate relaxation of that rule, which must be implemented carefully: the SMOOTHED articulation is stateful, since it integrates toward the target over time. That is intended. It must be reset to the timeline's articulation at position 0 whenever playback starts, stops, or seeks, so a replay never inherits the previous run's smoothing state.\n\nRead DESIGN_DECISIONS.md (the last entry especially) for the rationale and for what is deliberately NOT in scope.",
+  "requirements": [
+    "src/player/lipSyncPlayer.ts: replace the discrete mouth-state rendering with articulation-driven rendering. Each frame: read clock.nowMs(), add VISUAL_LEAD_MS to get the visual time, resolve the target articulation at that visual time, smooth the current articulation toward it with smoothArticulation() using the real elapsed ms since the previous rendered frame, then resolve poseWeights() and draw.",
+    "Drawing: poseWeights() returns at most two entries. When there is one entry, draw that frame alone (one drawImage, the steady-state cost). When there are two, draw the heavier one fully opaque and the lighter one over it at its weight, so total canvas alpha stays 1 -- never draw both at complementary alpha over a cleared canvas, which drops total alpha below 1 and shows the page background through the face.",
+    "src/core/timeline.ts: add a function resolving the target articulation at a given time from the MouthTimeline. It must apply commitmentFor(state, spanDuration) so a brief span pulls only partway from the previous span's articulation toward its own reference pose, using mixArticulation. Sustained spans reach their reference pose fully.",
+    "The timeline's existing span boundaries should blend over FRAME_CROSSFADE_MS rather than the old CROSSFADE_MS, and the existing crossfadeAt helper should either be updated to use the articulation path or removed if it becomes unused. Do not leave two competing transition mechanisms.",
+    "src/core/visemeMap.ts: MIN_SPAN_MS currently absorbs spans below 70ms. Lower it to 45 and add a comment explaining that partial commitment now handles brief spans more gracefully than absorption did, so the timeline can preserve more detail. Do NOT remove or weaken the merging of ADJACENT IDENTICAL states -- that must still collapse into one span.",
+    "Short-span absorption must never delete a CLOSED span. Lips meeting for M/B/P is the most legible event the model has; absorbing it loses the consonant entirely. Preserve CLOSED spans regardless of duration.",
+    "LipSyncPlayer must expose a read-only snapshot of its current state for the debug overlay that a later task will add: current articulation, current target articulation, resolved pose weights, clock position, visual time, and the active MouthState. Expose it as a method returning a plain object; do not add UI here.",
+    "Reset the smoothing state on play(), stop() and whenever the clock position jumps backwards (a replay). On reset, initialise the current articulation to the target at the reset position rather than to REST, so playback does not always begin with a visible settle.",
+    "Add vitest unit tests for the new timeline articulation resolution: a sustained span reaches its reference pose; a brief span lands strictly between the previous pose and its own; a CLOSED span reaches full closure however brief; the resolved articulation is continuous across a span boundary (no discontinuity larger than the crossfade permits).",
+    "Keep the existing public shape of LipSyncPlayer (constructor arguments, play/pause/resume/stop/resize) so src/ui/screens/talk.ts continues to work unchanged."
+  ],
+  "constraints": [
+    "Do NOT modify src/core/articulation.ts, src/core/types.ts, src/align/, src/tts/, src/store/ or src/ui/. Those are frozen or owned elsewhere.",
+    "Do not add dependencies.",
+    "Do not change the capture flow, the baking pipeline, the MouthRegion geometry, or the stored avatar schema. This task is rendering and timing only.",
+    "Do not attempt geometric or landmark-based warping. It is deliberately deferred: the required geometry is not stored. Blending reference frames is the intended Stage 1 approach.",
+    "Never drive animation from timers. The clock remains the only source of time.",
+    "Do not reintroduce a long alpha crossfade. Blending two photographs of different mouth positions causes double lips and double teeth; FRAME_CROSSFADE_MS is short on purpose."
+  ],
+  "startingPoints": ["src/core/articulation.ts", "src/player/lipSyncPlayer.ts", "src/core/timeline.ts", "src/core/visemeMap.ts", "DESIGN_DECISIONS.md"],
+  "writeTargets": ["src/player/lipSyncPlayer.ts", "src/core/timeline.ts", "src/core/visemeMap.ts", "src/core/timeline.test.ts"],
+  "validation": ["npm run typecheck", "npm test"],
+  "category": "animation-rendering",
+  "complexity": "hard",
+  "bounded": true,
+  "exploration": "none",
+  "risk": "medium",
+  "expectedCost": "medium",
+  "executionStyle": "deep-reasoning",
+  "composition": "atomic",
+  "sliceOf": "talking-face-articulation"
+}
