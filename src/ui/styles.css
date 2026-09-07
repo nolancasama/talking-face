@@ -23,6 +23,14 @@
 
 * { box-sizing: border-box; }
 
+/* The hidden attribute must always win. Any class that sets `display` is an
+   author style and would otherwise override the browser's default
+   `[hidden] { display: none }`, silently showing elements the code has hidden.
+   Enumerating the affected classes one by one was the previous approach and it
+   failed exactly as you'd expect: a new card was added, nobody added it to the
+   list, and it rendered from the first frame of the capture flow. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;

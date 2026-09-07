@@ -23,7 +23,6 @@
 .camera-still { position: absolute; inset: 0; }
 .face-guide { position: absolute; width: 68%; height: 80%; border: 3px solid rgba(242, 245, 250, .75); border-radius: 48%; box-shadow: 0 0 0 999px rgba(14, 17, 22, .18); pointer-events: none; }
 .camera-message { position: absolute; inset: 0; z-index: 2; padding: 28px; text-align: center; background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
-.camera-message[hidden], .after-capture[hidden], .adjust-panel[hidden], .replay-actions[hidden], .confirm-card[hidden] { display: none; }
 .capture-feedback, .talk-status { min-height: 24px; margin: -4px 0; text-align: center; color: var(--text-dim); font-size: 14px; }
 .capture-actions { min-height: 72px; display: grid; place-items: center; }
 .shutter { width: 72px; height: 72px; padding: 0; border: 6px solid var(--text); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--bg); cursor: pointer; }
@@ -84,7 +83,6 @@
 .inspector-tabs button, .inspector-state-buttons button { min-height: 38px; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--surface); color: var(--text-dim); font: inherit; font-size: 12px; cursor: pointer; }
 .inspector-tabs button[aria-pressed="true"] { border-color: var(--accent); background: var(--surface-2); color: var(--text); }
 .inspector-content { min-height: 0; flex: 1; overflow: auto; }
-.inspector-content > [hidden] { display: none; }
 .inspector-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .inspector-frame-card { min-width: 0; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: 11px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; cursor: pointer; }
 .inspector-frame-card canvas { display: block; width: 100%; height: auto; }
