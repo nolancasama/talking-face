@@ -10,8 +10,17 @@ export const MAX_ABS_YAW_DEGREES = 16;
 export const MAX_ABS_ROLL_DEGREES = 12;
 /** Eighteen percent permits normal lean while rejecting material face-size drift. */
 export const MAX_INTER_OCULAR_DRIFT_FRACTION = 0.18;
-/** A Laplacian variance below 65 indicates lost mouth-edge detail at normalized size. */
-export const MIN_MOUTH_LAPLACIAN_VARIANCE = 65;
+/**
+ * A conservative floor, not a calibrated one. Real captures (a laptop webcam
+ * especially) run through real-time video compression that suppresses fine
+ * detail even when the subject holds still, so the honest sharpness range for
+ * an acceptable shot is not yet known from real data. This value is set low
+ * enough to only catch genuinely severe blur -- motion smear, badly out of
+ * focus -- rather than ordinary webcam softness. checkCapture logs the
+ * measured value on every check so this can be tightened once real numbers
+ * from real devices exist.
+ */
+export const MIN_MOUTH_LAPLACIAN_VARIANCE = 8;
 
 const LUMA_SAMPLE_SIZE = 64;
 const BLUR_SAMPLE_LONG_EDGE = 192;
@@ -45,7 +54,9 @@ export async function checkCapture(
   }
 
   const region = mouthRegion ?? computeMouthRegion(landmarks);
-  if (mouthLaplacianVariance(image, region) < MIN_MOUTH_LAPLACIAN_VARIANCE) {
+  const sharpness = mouthLaplacianVariance(image, region);
+  if (import.meta.env.DEV) console.debug('[quality] mouth Laplacian variance:', sharpness);
+  if (sharpness < MIN_MOUTH_LAPLACIAN_VARIANCE) {
     return { ok: false, reason: 'too-blurry' };
   }
 
@@ -93,6 +104,10 @@ function mouthLaplacianVariance(image: ImageBitmap, region: MouthRegion): number
   const height = Math.max(3, Math.round(sourceHeight * scale));
   const canvas = createCanvas(width, height);
   const context = context2d(canvas, true);
+  // Smoothed resampling here would blur the crop before the sharpness metric
+  // ever runs, understating real detail. Disable it so the resize itself
+  // doesn't manufacture blur.
+  context.imageSmoothingEnabled = false;
   context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
   const pixels = context.getImageData(0, 0, width, height).data;
   const gray = new Float32Array(width * height);
