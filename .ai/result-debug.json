@@ -1,0 +1,93 @@
+{
+  "result": {
+    "worker": "codex",
+    "model": "gpt-5.6-sol (medium)",
+    "status": "SUCCESS",
+    "task": "Add a developer-only debug overlay and a static frame inspector to the talking-face app, so lip-sync problems can be attributed to the right layer.",
+    "filesChanged": [
+      "src/ui/screens/screens.css",
+      "src/ui/screens/talk.ts",
+      "src/ui/debugOverlay.ts",
+      "src/ui/screens/inspector.ts"
+    ],
+    "validation": null,
+    "usage": null,
+    "quotaBefore": null,
+    "quotaAfter": null,
+    "summary": "Implemented the developer-only lip-sync diagnostics.\n\n- Added live overlay with articulation bars, targets, pose weights, timing, visual lead, and color-coded timeline.\n- Added grid, instant flip, and REST pixel-difference inspector views.\n- Gated behind DEV mode plus `?debug=1`, persisted in localStorage. Use `?debug=0` to disable.\n- Integrated minimally into the talk screen without changing playback behavior.\n\nFiles changed:\n\n- [debugOverlay.ts](C:/Users/nolan/talking-face/src/ui/debugOverlay.ts)\n- [inspector.ts](C:/Users/nolan/talking-face/src/ui/screens/inspector.ts)\n- [talk.ts](C:/Users/nolan/talking-face/src/ui/screens/talk.ts)\n- [screens.css](C:/Users/nolan/talking-face/src/ui/screens/screens.css)\n\nValidation: `npm run typecheck` — passed.\n\nVisual evidence: not requested. Unresolved issues: none. Unrelated `.ai` files were preserved.",
+    "failureReason": null,
+    "git": {
+      "before": {
+        "repo": true,
+        "cwd": "C:\\Users\\nolan\\talking-face",
+        "head": "7b703946c958cb2041501db90e96b9ed3e1e78f6",
+        "branch": "master",
+        "status": "?? .ai/result-debug.err\n?? .ai/result-debug.json\n?? .ai/wo-debug.json\n",
+        "diffStat": "",
+        "diff": "",
+        "dirty": true,
+        "files": [
+          ".ai/result-debug.err",
+          ".ai/result-debug.json",
+          ".ai/wo-debug.json"
+        ],
+        "capturedAt": "2026-09-07T14:44:46.393Z"
+      },
+      "after": {
+        "repo": true,
+        "cwd": "C:\\Users\\nolan\\talking-face",
+        "head": "7b703946c958cb2041501db90e96b9ed3e1e78f6",
+        "branch": "master",
+        "status": " M src/ui/screens/screens.css\n M src/ui/screens/talk.ts\n?? .ai/result-debug.err\n?? .ai/result-debug.json\n?? .ai/wo-debug.json\n?? src/ui/debugOverlay.ts\n?? src/ui/screens/inspector.ts\n",
+        "diffStat": " src/ui/screens/screens.css | 37 +++++++++++++++++++++++++++++++++++++\n src/ui/screens/talk.ts     | 21 +++++++++++++++++++++\n 2 files changed, 58 insertions(+)\n",
+        "diff": "diff --git a/src/ui/screens/screens.css b/src/ui/screens/screens.css\nindex ab9ffd5..f1b09d7 100644\n--- a/src/ui/screens/screens.css\n+++ b/src/ui/screens/screens.css\n@@ -50,6 +50,43 @@\n .speak-button { min-height: 60px; font-size: 19px; }\n .replay-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }\n \n+.debug-inspector-link { min-height: var(--tap); margin-left: auto; padding: 0 4px; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; }\n+.debug-overlay { position: absolute; z-index: 5; top: 8px; right: 8px; width: min(292px, calc(100% - 16px)); padding: 8px; border: 1px solid rgba(255, 255, 255, .18); border-radius: 8px; background: rgba(6, 8, 11, .88); color: var(--text); font: 10px/1.25 ui-monospace, SFMono-Regular, Consolas, \"Liberation Mono\", monospace; pointer-events: none; }\n+.debug-overlay__heading, .debug-metric { display: flex; justify-content: space-between; gap: 8px; }\n+.debug-overlay__heading { margin-bottom: 5px; color: var(--text-dim); letter-spacing: .08em; }\n+.debug-overlay__heading strong { color: var(--text); }\n+.debug-overlay__controls { display: grid; gap: 3px; margin-bottom: 5px; }\n+.debug-control { display: grid; grid-template-columns: 76px 1fr; gap: 1px 6px; align-items: center; }\n+.debug-control output { text-align: right; }\n+.debug-control__bar { position: relative; grid-column: 1 / -1; height: 5px; overflow: visible; border-radius: var(--r-pill); background: var(--surface-2); }\n+.debug-control__fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }\n+.debug-control__target { position: absolute; top: -2px; width: 2px; height: 9px; margin-left: -1px; background: #fff; }\n+.debug-metric > :last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n+.debug-timeline { display: block; width: 100%; height: 16px; margin-top: 5px; border: 1px solid rgba(255, 255, 255, .2); }\n+.debug-timeline-legend { display: flex; flex-wrap: wrap; gap: 2px 7px; margin-top: 3px; color: var(--text-dim); font-size: 8px; }\n+.debug-timeline-legend span { display: inline-flex; align-items: center; gap: 2px; }\n+.debug-timeline-legend i { width: 6px; height: 6px; border-radius: 1px; }\n+\n+.inspector-screen { overflow: hidden; }\n+.inspector-header { display: flex; align-items: center; gap: 12px; }\n+.inspector-back { min-height: 44px; padding-inline: 18px; }\n+.inspector-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }\n+.inspector-tabs button, .inspector-state-buttons button { min-height: 38px; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--surface); color: var(--text-dim); font: inherit; font-size: 12px; cursor: pointer; }\n+.inspector-tabs button[aria-pressed=\"true\"] { border-color: var(--accent); background: var(--surface-2); color: var(--text); }\n+.inspector-content { min-height: 0; flex: 1; overflow: auto; }\n+.inspector-content > [hidden] { display: none; }\n+.inspector-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }\n+.inspector-frame-card { min-width: 0; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: 11px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; cursor: pointer; }\n+.inspector-frame-card canvas { display: block; width: 100%; height: auto; }\n+.inspector-frame-card span { display: block; padding: 5px; }\n+.inspector-detail { height: 100%; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }\n+.inspector-detail > strong { font: 12px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; }\n+.inspector-large-canvas { display: block; min-height: 0; max-width: 100%; max-height: calc(100% - 96px); width: auto; height: auto; object-fit: contain; border: 1px solid var(--line); border-radius: var(--r-md); background: #000; }\n+.inspector-difference-canvas { max-height: calc(100% - 126px); }\n+.inspector-hint { font-size: 11px; text-align: center; }\n+.inspector-state-buttons { width: 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }\n+.inspector-state-buttons button { min-width: 0; padding: 0 2px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9px; }\n+\n .settings-screen { padding-top: 4px; }\n .settings-back { align-self: flex-start; }\n .settings-card, .confirm-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px; }\ndiff --git a/src/ui/screens/talk.ts b/src/ui/screens/talk.ts\nindex 23bfee7..50d5eed 100644\n--- a/src/ui/screens/talk.ts\n+++ b/src/ui/screens/talk.ts\n@@ -4,7 +4,9 @@ import { AudioElementClock, ExternalPlaybackClock } from '../../player/clock';\n import { LipSyncPlayer } from '../../player/lipSyncPlayer';\n import type { AvatarStore } from '../../store/avatarStore';\n import { friendlyVoices, pickProvider } from '../../tts';\n+import { DebugOverlay, isDebugModeEnabled } from '../debugOverlay';\n import type { Navigator, Screen } from '../router';\n+import { InspectorScreen } from './inspector';\n import { SettingsScreen } from './settings';\n \n type CachedSpeech = {\n@@ -19,6 +21,7 @@ type CachedSpeech = {\n \n export class TalkScreen implements Screen {\n   private cached: CachedSpeech | null = null;\n+  private debugOverlay: DebugOverlay | null = null;\n   private mounted = false;\n \n   constructor(private readonly avatar: Avatar, private readonly store: AvatarStore) {}\n@@ -40,6 +43,16 @@ export class TalkScreen implements Screen {\n     settings.textContent = 'Settings';\n     top.append(title, settings);\n \n+    const debugMode = isDebugModeEnabled();\n+    if (debugMode) {\n+      const inspector = document.createElement('button');\n+      inspector.className = 'debug-inspector-link';\n+      inspector.type = 'button';\n+      inspector.textContent = 'Inspect frames';\n+      inspector.addEventListener('click', () => void nav.go(new InspectorScreen(this.avatar)));\n+      top.insertBefore(inspector, settings);\n+    }\n+\n     const stage = document.createElement('div');\n     stage.className = 'avatar-stage talk-stage';\n     const canvas = document.createElement('canvas');\n@@ -47,6 +60,12 @@ export class TalkScreen implements Screen {\n     canvas.height = this.avatar.height;\n     canvas.getContext('2d')?.drawImage(this.avatar.frames.REST, 0, 0);\n     stage.append(canvas);\n+    if (debugMode) {\n+      this.debugOverlay = new DebugOverlay(() => this.cached\n+        ? { player: this.cached.player, timeline: this.cached.timeline }\n+        : null);\n+      this.debugOverlay.mount(stage);\n+    }\n \n     const form = document.createElement('div');\n     form.className = 'talk-controls';\n@@ -214,6 +233,8 @@ export class TalkScreen implements Screen {\n \n   unmount(): void {\n     this.mounted = false;\n+    this.debugOverlay?.destroy();\n+    this.debugOverlay = null;\n     this.cached?.player.stop();\n     if (this.cached?.clock instanceof AudioElementClock) this.cached.clock.dispose();\n     this.cached = null;\n",
+        "dirty": true,
+        "files": [
+          "src/ui/screens/screens.css",
+          "src/ui/screens/talk.ts",
+          ".ai/result-debug.err",
+          ".ai/result-debug.json",
+          ".ai/wo-debug.json",
+          "src/ui/debugOverlay.ts",
+          "src/ui/screens/inspector.ts"
+        ],
+        "capturedAt": "2026-09-07T14:52:05.105Z"
+      }
+    },
+    "startedAt": "2026-09-07T14:44:46.393Z",
+    "endedAt": "2026-09-07T14:52:05.105Z",
+    "durationSeconds": 438.7,
+    "deniedResource": null,
+    "repairAttempts": null,
+    "longTry": null,
+    "stopCode": null,
+    "progress": null,
+    "validationPassed": null,
+    "infrastructure": null,
+    "backendStartup": null,
+    "providerRecovery": null
+  },
+  "banner": "agy-gpt skipped: quota 10.4%, resets in 31.6h - only small high-confidence tasks at this quota level [10.4%, resets in 31.6h]\nagy-claude skipped: quota 10.4%, resets in 31.6h - only small high-confidence tasks at this quota level [10.4%, resets in 31.6h]\nagy-claude-strong skipped: quota 10.4%, resets in 31.6h - only small high-confidence tasks at this quota level [10.4%, resets in 31.6h]\nWorker: codex (gpt-5.6-sol)",
+  "fallback": null,
+  "chainId": "9d9f8576-0081-4a23-aeeb-20f815dfef2b",
+  "attempts": [
+    {
+      "worker": "gemini",
+      "provider": "antigravity",
+      "model": "gemini-3.7-flash-low",
+      "status": "PARTIAL",
+      "failureKind": "auth",
+      "entryReason": "initial"
+    },
+    {
+      "worker": "codex",
+      "provider": "openai",
+      "model": "gpt-5.6-sol (medium)",
+      "status": "SUCCESS",
+      "failureKind": null,
+      "entryReason": "fallback"
+    }
+  ],
+  "attemptCount": 2,
+  "stopReason": "success"
+}

@@ -50,6 +50,43 @@
 .speak-button { min-height: 60px; font-size: 19px; }
 .replay-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
+.debug-inspector-link { min-height: var(--tap); margin-left: auto; padding: 0 4px; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; }
+.debug-overlay { position: absolute; z-index: 5; top: 8px; right: 8px; width: min(292px, calc(100% - 16px)); padding: 8px; border: 1px solid rgba(255, 255, 255, .18); border-radius: 8px; background: rgba(6, 8, 11, .88); color: var(--text); font: 10px/1.25 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; pointer-events: none; }
+.debug-overlay__heading, .debug-metric { display: flex; justify-content: space-between; gap: 8px; }
+.debug-overlay__heading { margin-bottom: 5px; color: var(--text-dim); letter-spacing: .08em; }
+.debug-overlay__heading strong { color: var(--text); }
+.debug-overlay__controls { display: grid; gap: 3px; margin-bottom: 5px; }
+.debug-control { display: grid; grid-template-columns: 76px 1fr; gap: 1px 6px; align-items: center; }
+.debug-control output { text-align: right; }
+.debug-control__bar { position: relative; grid-column: 1 / -1; height: 5px; overflow: visible; border-radius: var(--r-pill); background: var(--surface-2); }
+.debug-control__fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.debug-control__target { position: absolute; top: -2px; width: 2px; height: 9px; margin-left: -1px; background: #fff; }
+.debug-metric > :last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.debug-timeline { display: block; width: 100%; height: 16px; margin-top: 5px; border: 1px solid rgba(255, 255, 255, .2); }
+.debug-timeline-legend { display: flex; flex-wrap: wrap; gap: 2px 7px; margin-top: 3px; color: var(--text-dim); font-size: 8px; }
+.debug-timeline-legend span { display: inline-flex; align-items: center; gap: 2px; }
+.debug-timeline-legend i { width: 6px; height: 6px; border-radius: 1px; }
+
+.inspector-screen { overflow: hidden; }
+.inspector-header { display: flex; align-items: center; gap: 12px; }
+.inspector-back { min-height: 44px; padding-inline: 18px; }
+.inspector-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.inspector-tabs button, .inspector-state-buttons button { min-height: 38px; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--surface); color: var(--text-dim); font: inherit; font-size: 12px; cursor: pointer; }
+.inspector-tabs button[aria-pressed="true"] { border-color: var(--accent); background: var(--surface-2); color: var(--text); }
+.inspector-content { min-height: 0; flex: 1; overflow: auto; }
+.inspector-content > [hidden] { display: none; }
+.inspector-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.inspector-frame-card { min-width: 0; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: 11px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; cursor: pointer; }
+.inspector-frame-card canvas { display: block; width: 100%; height: auto; }
+.inspector-frame-card span { display: block; padding: 5px; }
+.inspector-detail { height: 100%; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.inspector-detail > strong { font: 12px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.inspector-large-canvas { display: block; min-height: 0; max-width: 100%; max-height: calc(100% - 96px); width: auto; height: auto; object-fit: contain; border: 1px solid var(--line); border-radius: var(--r-md); background: #000; }
+.inspector-difference-canvas { max-height: calc(100% - 126px); }
+.inspector-hint { font-size: 11px; text-align: center; }
+.inspector-state-buttons { width: 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+.inspector-state-buttons button { min-width: 0; padding: 0 2px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9px; }
+
 .settings-screen { padding-top: 4px; }
 .settings-back { align-self: flex-start; }
 .settings-card, .confirm-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px; }

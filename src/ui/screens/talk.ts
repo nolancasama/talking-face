@@ -4,7 +4,9 @@ import { AudioElementClock, ExternalPlaybackClock } from '../../player/clock';
 import { LipSyncPlayer } from '../../player/lipSyncPlayer';
 import type { AvatarStore } from '../../store/avatarStore';
 import { friendlyVoices, pickProvider } from '../../tts';
+import { DebugOverlay, isDebugModeEnabled } from '../debugOverlay';
 import type { Navigator, Screen } from '../router';
+import { InspectorScreen } from './inspector';
 import { SettingsScreen } from './settings';
 
 type CachedSpeech = {
@@ -19,6 +21,7 @@ type CachedSpeech = {
 
 export class TalkScreen implements Screen {
   private cached: CachedSpeech | null = null;
+  private debugOverlay: DebugOverlay | null = null;
   private mounted = false;
 
   constructor(private readonly avatar: Avatar, private readonly store: AvatarStore) {}
@@ -40,6 +43,16 @@ export class TalkScreen implements Screen {
     settings.textContent = 'Settings';
     top.append(title, settings);
 
+    const debugMode = isDebugModeEnabled();
+    if (debugMode) {
+      const inspector = document.createElement('button');
+      inspector.className = 'debug-inspector-link';
+      inspector.type = 'button';
+      inspector.textContent = 'Inspect frames';
+      inspector.addEventListener('click', () => void nav.go(new InspectorScreen(this.avatar)));
+      top.insertBefore(inspector, settings);
+    }
+
     const stage = document.createElement('div');
     stage.className = 'avatar-stage talk-stage';
     const canvas = document.createElement('canvas');
@@ -47,6 +60,12 @@ export class TalkScreen implements Screen {
     canvas.height = this.avatar.height;
     canvas.getContext('2d')?.drawImage(this.avatar.frames.REST, 0, 0);
     stage.append(canvas);
+    if (debugMode) {
+      this.debugOverlay = new DebugOverlay(() => this.cached
+        ? { player: this.cached.player, timeline: this.cached.timeline }
+        : null);
+      this.debugOverlay.mount(stage);
+    }
 
     const form = document.createElement('div');
     form.className = 'talk-controls';
@@ -214,6 +233,8 @@ export class TalkScreen implements Screen {
 
   unmount(): void {
     this.mounted = false;
+    this.debugOverlay?.destroy();
+    this.debugOverlay = null;
     this.cached?.player.stop();
     if (this.cached?.clock instanceof AudioElementClock) this.cached.clock.dispose();
     this.cached = null;

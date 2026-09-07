@@ -1,0 +1,34 @@
+{
+  "id": "tf-debug",
+  "task": "Add a developer-only debug overlay and a static frame inspector to the talking-face app, so lip-sync problems can be attributed to the right layer.",
+  "notes": "This app animates a photographed face by blending baked mouth frames against a TTS playback clock. It currently looks uncanny, and there is no way to tell whether the cause is bad timing, bad viseme mapping, bad interpolation, bad captured photos, or bad geometric alignment. This task builds the instrument that answers that.\n\nThe frame inspector matters as much as the live overlay, and possibly more: the five baked frames have never been examined against a real face. If the user's five photographs carry residual head movement that the rigid alignment did not fully correct, every frame will jump relative to the others and NO amount of rendering work will fix it. The inspector must make that immediately obvious.\n\nLipSyncPlayer already exposes a read-only snapshot method returning the current articulation, target articulation, resolved pose weights, clock position, visual time and active mouth state. Read it from the animation loop; do not add your own timers, and do not change the player's rendering behaviour in any way.\n\nsrc/core/articulation.ts and src/core/types.ts are FROZEN. Read DESIGN_DECISIONS.md for context on what Stage 1 does and does not attempt.",
+  "requirements": [
+    "src/ui/debugOverlay.ts: a DebugOverlay class that mounts a compact absolutely-positioned panel over the talking screen's avatar. It reads LipSyncPlayer's snapshot each animation frame and renders: active MouthState, current and target values for all four articulation controls (jawOpen, lipWidth, lipRound, lipClosure), the resolved pose weights with their numeric weights, clock position in ms, visual time in ms, and the configured VISUAL_LEAD_MS.",
+    "Render the four articulation controls as small horizontal bars as well as numbers, with the target shown as a marker against the current value's bar. Reading four changing decimals during 1.5 seconds of speech is not usable; the bars are what make smoothing behaviour legible.",
+    "Include a compact timeline strip: draw the whole MouthTimeline as coloured segments proportional to duration, with a playhead marker at the current visual time and a distinct colour per MouthState. This is what makes a timing or mapping fault visible at a glance.",
+    "The overlay must be off by default and must never appear in the normal user flow. Gate it on import.meta.env.DEV AND an explicit toggle (a URL parameter such as ?debug=1, persisted to localStorage so it survives reloads). Never show a debug affordance to an ordinary user.",
+    "src/ui/screens/inspector.ts: a static frame inspector screen, reachable only when debug mode is enabled. It shows all five baked frames (REST, CLOSED, OPEN, WIDE, ROUND) and offers two views: a grid showing all five at once, and a single large frame with buttons to flip between states instantly with no blending.",
+    "The inspector's flip view is the key diagnostic: flipping between two frames of a correctly aligned avatar should move ONLY the mouth region. Add a difference view that renders the pixel difference between the currently selected frame and REST, so any movement outside the mouth region -- head shift, chin jump, lighting change -- shows up as visible bright area where it should be near black.",
+    "Wire both into src/ui/screens/talk.ts with the smallest possible change: when debug mode is on, mount the overlay over the avatar canvas and add a small link to the inspector. When it is off, talk.ts must behave exactly as it does now.",
+    "Styling goes in src/ui/screens/screens.css using the existing tokens. The overlay must use a monospace font, sit above the canvas without changing the canvas layout, and be readable over a photograph (semi-opaque dark backing).",
+    "The overlay must not affect playback. Do all its drawing in its own canvas or DOM nodes, never on the avatar canvas, and do not call any LipSyncPlayer method other than the read-only snapshot."
+  ],
+  "constraints": [
+    "Do NOT modify src/core/articulation.ts, src/core/types.ts, src/core/timeline.ts, src/core/visemeMap.ts, src/player/, src/align/, src/tts/ or src/store/.",
+    "Only minimal, additive changes to src/ui/screens/talk.ts. Do not restructure it.",
+    "Do not add dependencies.",
+    "Do not change rendering, timing, smoothing or the viseme mapping. This task only observes.",
+    "No debug UI may be reachable in a production build or by an ordinary user."
+  ],
+  "startingPoints": ["src/player/lipSyncPlayer.ts", "src/core/articulation.ts", "src/ui/screens/talk.ts", "src/ui/screens/screens.css", "src/core/types.ts"],
+  "writeTargets": ["src/ui/debugOverlay.ts", "src/ui/screens/inspector.ts", "src/ui/screens/talk.ts", "src/ui/screens/screens.css"],
+  "validation": ["npm run typecheck"],
+  "category": "developer-tooling",
+  "complexity": "medium",
+  "bounded": true,
+  "exploration": "none",
+  "risk": "low",
+  "expectedCost": "medium",
+  "composition": "atomic",
+  "sliceOf": "talking-face-articulation"
+}
