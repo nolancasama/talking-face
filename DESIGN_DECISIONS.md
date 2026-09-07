@@ -174,3 +174,66 @@ of capture costs one landmark pass we are running anyway.
 weight and a render loop we would have to fight for the one thing that actually
 matters here — frame-accurate mouth swapping against an audio clock. The core
 modules are pure TypeScript and framework-agnostic regardless.
+
+---
+
+## 2026-09-07 — Face-alignment anchors, feather geometry, and capture gates
+
+**Decision.** Registration uses MediaPipe mesh indices 263/362 (anatomical left
+outer/inner eye corners), 133/33 (anatomical right inner/outer eye corners), and
+6 (the bony mid-dorsum of the nose). The compositing region is centred on the
+outer-lip contour, is at least 2.4 lip-widths wide, starts at least 0.32
+lip-widths above the upper lip, and ends at least 0.18 lip-widths below the chin.
+Its alpha is an elliptical radial falloff whose feather is 18% of the shorter
+region dimension. Capture rejects mean luma below 45/255, absolute yaw above
+16 degrees, absolute roll above 12 degrees, inter-ocular drift above 18%, or
+mouth-region Laplacian variance below 65 after limiting analysis to 192 pixels.
+
+**Why.** The four canthi and mid-dorsum are stable against lip pursing and jaw
+drop while still giving an over-determined, non-collinear similarity fit. The
+wide, over-tall ellipse puts its transition on relatively static cheek/neck
+skin, fully replaces the neutral chin during OPEN, and has no rectangular
+corners to reveal exposure or registration differences.
+The capture thresholds leave room for ordinary handheld variation but reject
+conditions where a 2D registration or the feather cannot conceal the error;
+normalizing blur analysis prevents image resolution alone changing that gate.
+
+**Rejected.** Lip, subnasale, alar-base, and nose-tip anchors because speech
+moves them; a tight mouth rectangle because it leaves the neutral chin visible;
+and a box/linear-edge mask because its corners and straight seams remain
+perceptible.
+
+---
+
+## 2026-09-07 — Mask falloff moved to the region edge; region sized from all poses
+
+**Decision.** Two corrections to the entry above, made during review of the
+alignment implementation.
+
+1. The overlay alpha mask is an opaque plateau that ramps to zero only within
+   `feather` px of the region **boundary** (a smoothstepped per-axis ramp whose
+   product rounds the corners), replacing the elliptical radial falloff measured
+   from the region centre.
+2. The region is sized from the union of all five shots' lip contours and chin
+   points — each pose mapped into neutral space through its own registration
+   transform — rather than from the neutral selfie alone.
+
+**Why.** Both defects converged on the same failure, and it landed on the worst
+possible pose. With a centre-weighted radial falloff at typical face
+proportions, the mask was fully opaque only to a 26px half-width at the upper
+lip line, while an EEE smile reaches roughly 32.5px. The corners of the smile
+therefore fell in the falloff and ghosted back toward the neutral closed mouth —
+and wide corners are the entire point of the WIDE pose. The plateau mask gives
+44px of full opacity uniformly across the lip span.
+
+The radial falloff was also conceptually misplaced: the region is deliberately
+sized so its *edge* lands on static skin, so that edge is exactly where the
+feather belongs. Spreading it inward from the centre spends the softness on the
+lips, which is the one part that must be fully replaced.
+
+Sizing from the neutral shot alone under-covers by construction — the poses
+exist precisely because they are more extreme than neutral, so the neutral lip
+contour cannot predict their extent.
+
+**Rejected.** Simply widening the region to buy margin: that pushes the boundary
+onto the moving jawline, trading a ghosted smile for a visible seam.

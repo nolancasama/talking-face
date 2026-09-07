@@ -1,0 +1,89 @@
+{
+  "result": {
+    "worker": "codex",
+    "model": "gpt-5.6-sol (high)",
+    "status": "SUCCESS",
+    "task": "Implement FaceAlignment for the talking-face app: detect landmarks in five captured photos, register the four mouth poses onto the neutral selfie using a rigid-point similarity fit, and bake five fully-composited mouth frames.",
+    "filesChanged": [
+      "DESIGN_DECISIONS.md",
+      "src/align/"
+    ],
+    "validation": null,
+    "usage": null,
+    "quotaBefore": null,
+    "quotaAfter": null,
+    "summary": "Implemented FaceAlignment end-to-end.\n\n- Added lazy MediaPipe landmark detection and documented mesh mappings in [landmarks.ts](C:/Users/nolan/talking-face/src/align/landmarks.ts:1).\n- Added rigid-point Umeyama similarity fitting, application, and inversion in [transform.ts](C:/Users/nolan/talking-face/src/align/transform.ts:1).\n- Added chin-covering mouth-region geometry in [region.ts](C:/Users/nolan/talking-face/src/align/region.ts:1).\n- Added five-frame OffscreenCanvas/HTMLCanvas baking with reusable elliptical feather masks and nudges in [bake.ts](C:/Users/nolan/talking-face/src/align/bake.ts:1).\n- Added all capture-quality gates and named thresholds in [quality.ts](C:/Users/nolan/talking-face/src/align/quality.ts:1).\n- Added transform and region unit tests.\n- Recorded anchor, mask, region, and threshold decisions in [DESIGN_DECISIONS.md](C:/Users/nolan/talking-face/DESIGN_DECISIONS.md:180).\n- Left the frozen contract and excluded modules unchanged.\n\nValidation:\n\n- `npm run typecheck`: blocked by unrelated missing `src/ui/screens/welcome` and `src/ui/screens/talk` modules.\n- `npm test`: blocked during Vitest startup because the sandbox denied esbuild access to the parent directory.\n- No visual evidence produced; none was requested.",
+    "failureReason": null,
+    "git": {
+      "before": {
+        "repo": true,
+        "cwd": "C:\\Users\\nolan\\talking-face",
+        "head": "118389884f1f910c26567b9e71f5fe47ddc37b8c",
+        "branch": "master",
+        "status": "?? .ai/result-align.err\n?? .ai/result-align.json\n?? .ai/wo-align.json\n?? .ai/wo-speech.json\n?? .ai/wo-ui.json\n?? package-lock.json\n?? src/store/\n",
+        "diffStat": "",
+        "diff": "",
+        "dirty": true,
+        "files": [
+          ".ai/result-align.err",
+          ".ai/result-align.json",
+          ".ai/wo-align.json",
+          ".ai/wo-speech.json",
+          ".ai/wo-ui.json",
+          "package-lock.json",
+          "src/store/"
+        ],
+        "capturedAt": "2026-09-07T11:06:54.089Z"
+      },
+      "after": {
+        "repo": true,
+        "cwd": "C:\\Users\\nolan\\talking-face",
+        "head": "118389884f1f910c26567b9e71f5fe47ddc37b8c",
+        "branch": "master",
+        "status": " M DESIGN_DECISIONS.md\n?? .ai/result-align.err\n?? .ai/result-align.json\n?? .ai/wo-align.json\n?? .ai/wo-speech.json\n?? .ai/wo-ui.json\n?? package-lock.json\n?? src/align/\n?? src/store/\n",
+        "diffStat": " DESIGN_DECISIONS.md | 28 ++++++++++++++++++++++++++++\n 1 file changed, 28 insertions(+)\n",
+        "diff": "diff --git a/DESIGN_DECISIONS.md b/DESIGN_DECISIONS.md\nindex faaca20..5279787 100644\n--- a/DESIGN_DECISIONS.md\n+++ b/DESIGN_DECISIONS.md\n@@ -174,3 +174,31 @@ of capture costs one landmark pass we are running anyway.\n weight and a render loop we would have to fight for the one thing that actually\n matters here — frame-accurate mouth swapping against an audio clock. The core\n modules are pure TypeScript and framework-agnostic regardless.\n+\n+---\n+\n+## 2026-09-07 — Face-alignment anchors, feather geometry, and capture gates\n+\n+**Decision.** Registration uses MediaPipe mesh indices 263/362 (anatomical left\n+outer/inner eye corners), 133/33 (anatomical right inner/outer eye corners), and\n+6 (the bony mid-dorsum of the nose). The compositing region is centred on the\n+outer-lip contour, is at least 2.4 lip-widths wide, starts at least 0.32\n+lip-widths above the upper lip, and ends at least 0.18 lip-widths below the chin.\n+Its alpha is an elliptical radial falloff whose feather is 18% of the shorter\n+region dimension. Capture rejects mean luma below 45/255, absolute yaw above\n+16 degrees, absolute roll above 12 degrees, inter-ocular drift above 18%, or\n+mouth-region Laplacian variance below 65 after limiting analysis to 192 pixels.\n+\n+**Why.** The four canthi and mid-dorsum are stable against lip pursing and jaw\n+drop while still giving an over-determined, non-collinear similarity fit. The\n+wide, over-tall ellipse puts its transition on relatively static cheek/neck\n+skin, fully replaces the neutral chin during OPEN, and has no rectangular\n+corners to reveal exposure or registration differences.\n+The capture thresholds leave room for ordinary handheld variation but reject\n+conditions where a 2D registration or the feather cannot conceal the error;\n+normalizing blur analysis prevents image resolution alone changing that gate.\n+\n+**Rejected.** Lip, subnasale, alar-base, and nose-tip anchors because speech\n+moves them; a tight mouth rectangle because it leaves the neutral chin visible;\n+and a box/linear-edge mask because its corners and straight seams remain\n+perceptible.\n",
+        "dirty": true,
+        "files": [
+          "DESIGN_DECISIONS.md",
+          ".ai/result-align.err",
+          ".ai/result-align.json",
+          ".ai/wo-align.json",
+          ".ai/wo-speech.json",
+          ".ai/wo-ui.json",
+          "package-lock.json",
+          "src/align/",
+          "src/store/"
+        ],
+        "capturedAt": "2026-09-07T11:20:43.180Z"
+      }
+    },
+    "startedAt": "2026-09-07T11:06:54.089Z",
+    "endedAt": "2026-09-07T11:20:43.181Z",
+    "durationSeconds": 829.1,
+    "deniedResource": null,
+    "repairAttempts": null,
+    "longTry": null,
+    "stopCode": null,
+    "progress": null,
+    "validationPassed": null,
+    "infrastructure": null,
+    "backendStartup": null,
+    "providerRecovery": null
+  },
+  "banner": "agy-claude skipped: quota 10.4%, resets in 35.2h - only small high-confidence tasks at this quota level [10.4%, resets in 35.2h]\nagy-claude-strong skipped: quota 10.4%, resets in 35.2h - only small high-confidence tasks at this quota level [10.4%, resets in 35.2h]\nWorker: codex (gpt-5.6-sol)",
+  "fallback": null,
+  "chainId": "0056815f-7f54-484b-ab89-fa5eda330f86",
+  "attempts": [
+    {
+      "worker": "codex",
+      "provider": "openai",
+      "model": "gpt-5.6-sol (high)",
+      "status": "SUCCESS",
+      "failureKind": null,
+      "entryReason": "initial"
+    }
+  ],
+  "attemptCount": 1,
+  "stopReason": "success"
+}

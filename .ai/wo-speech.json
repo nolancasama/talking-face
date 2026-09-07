@@ -1,0 +1,34 @@
+{
+  "id": "tf-speech",
+  "task": "Implement the speech pipeline for the talking-face app: TTS providers, viseme mapping, mouth-timeline building, a playback clock abstraction, and the lip-sync player/renderer.",
+  "notes": "This app animates a photographed face by swapping five pre-rendered frames (REST/CLOSED/OPEN/WIDE/ROUND) in time with TTS audio.\n\nThe non-negotiable rule: the audio position is the master clock. The mouth state for a given frame is DERIVED from the current playback position every frame - never driven by a chain of setTimeout calls. This is what prevents drift when the phone drops frames, the browser stalls, or playback pauses and resumes.\n\nThat rule is expressed through the PlaybackClock interface rather than HTMLAudioElement directly, because one provider (Web Speech) owns its own playback and exposes neither a buffer nor a position.\n\nsrc/core/types.ts is a FROZEN CONTRACT shared with three other modules. Implement against it exactly; do not edit it. src/core/visemeMap.ts holds the product mapping table - consume it, do not restate or fork it. Read DESIGN_DECISIONS.md for rationale.",
+  "requirements": [
+    "src/tts/azure.ts: an AzureTTSProvider implementing TTSProvider. It POSTs text/voice/speed to the proxy URL from src/tts/config.ts endpointConfig() and expects back audio plus viseme events. In development only, when devDirectConfig() returns credentials, it may instead call Azure Speech directly using SSML and the viseme event stream. Never read credentials outside that dev path - config.ts already enforces this and must not be worked around.",
+    "src/tts/webspeech.ts: a WebSpeechTTSProvider implementing TTSProvider as the zero-credential fallback. It returns audio:null and an ExternalPlayback that drives speechSynthesis. Estimate cue timings from the text: split into words, assign each word a duration proportional to its length adjusted by speed, and correct the estimate against real onboundary events as they fire. Produce phoneme-ish tokens via a simple letter-group heuristic; accuracy here is explicitly best-effort.",
+    "src/tts/index.ts: pickProvider() returning the first provider whose available() resolves true, Azure preferred. Expose the friendly voice list (Female 1/2, Male 1/2) mapping to provider-native ids; never surface a raw provider id in a label.",
+    "src/core/visemeMapper.ts: map a SpeechToken to a MouthState using the tables in visemeMap.ts. Handle the viseme kind (by provider name, currently azure), the phoneme kind (strip stress digits, uppercase, look up), and silence. Unrecognised tokens use FALLBACK_MOUTH.",
+    "src/core/timeline.ts: buildTimeline(cues, durationMs): MouthTimeline. Map each cue to a mouth state, merge adjacent spans that resolve to the same state into one span, absorb spans shorter than MIN_SPAN_MS into their neighbour (prefer merging into the longer neighbour), guarantee the timeline starts at 0 and ends at durationMs, and append a REST span for the final TRAILING_REST_MS. The output must be gapless, non-overlapping and strictly increasing.",
+    "src/core/timeline.ts also exports mouthAt(timeline, ms) doing a binary search, plus a crossfade helper returning {from, to, t} where t is 0..1 across CROSSFADE_MS at each span boundary.",
+    "src/player/clock.ts: AudioElementClock implementing PlaybackClock over an HTMLAudioElement created from a Blob (nowMs = currentTime*1000), and ExternalPlaybackClock implementing it over a SpeechResult.externalPlayback. Both must report playing() honestly and fire onEnd exactly once.",
+    "src/player/lipSyncPlayer.ts: LipSyncPlayer takes an Avatar, a canvas, a MouthTimeline and a PlaybackClock. On each requestAnimationFrame it reads clock.nowMs(), resolves the mouth state, and draws. Steady state is ONE drawImage of the current baked frame; only during a crossfade does it draw two (outgoing then incoming at complementary alpha). It returns to REST on end and on stop. Handle pause/resume and repeated play of the same timeline without regenerating anything. Size the canvas to the avatar with devicePixelRatio handling.",
+    "Add vitest unit tests for visemeMapper (each kind, plus the unknown-token fallback) and for timeline (merging adjacent identical states, absorbing sub-minimum spans, gaplessness, boundary conditions at 0 and durationMs, and mouthAt correctness including exact boundaries)."
+  ],
+  "constraints": [
+    "Do NOT modify src/core/types.ts, src/core/visemeMap.ts, src/tts/config.ts, src/main.ts, src/ui/, src/align/ or src/store/. Other workers are editing those concurrently.",
+    "Do not add dependencies. Use fetch and the Web Speech API directly rather than pulling in the Azure SDK.",
+    "Never drive animation from setTimeout/setInterval. The clock is the only source of time.",
+    "Only the text to be spoken may leave the device. Never send image data to a TTS service.",
+    "Do not build UI. This slice is pure modules under src/tts/, src/player/ and src/core/."
+  ],
+  "startingPoints": ["src/core/types.ts", "src/core/visemeMap.ts", "src/tts/config.ts", "src/player/", "DESIGN_DECISIONS.md"],
+  "writeTargets": ["src/tts/azure.ts", "src/tts/webspeech.ts", "src/tts/index.ts", "src/core/visemeMapper.ts", "src/core/timeline.ts", "src/player/clock.ts", "src/player/lipSyncPlayer.ts", "src/**/*.test.ts"],
+  "validation": ["npm run typecheck", "npm test"],
+  "category": "audio-sync",
+  "complexity": "medium",
+  "bounded": true,
+  "exploration": "none",
+  "risk": "low",
+  "expectedCost": "medium",
+  "composition": "atomic",
+  "sliceOf": "talking-face-v1"
+}

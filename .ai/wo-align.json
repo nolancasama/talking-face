@@ -1,0 +1,49 @@
+{
+  "id": "tf-align",
+  "task": "Implement FaceAlignment for the talking-face app: detect landmarks in five captured photos, register the four mouth poses onto the neutral selfie using a rigid-point similarity fit, and bake five fully-composited mouth frames.",
+  "notes": "This app makes a user's selfie appear to talk by swapping five pre-rendered images in time with TTS audio. The user photographs a neutral selfie plus four mouth poses (CLOSED/OPEN/WIDE/ROUND). This slice turns those five photos into five composited frames.\n\nThe single most important correctness rule: the transform that registers a pose photo onto the neutral selfie MUST be solved only from landmarks that do not move while speaking. Solving it from lip landmarks would cancel out the exact difference the overlay exists to carry - an OPEN mouth registered onto the neutral mouth's centre and scale gets dragged back toward the closed position. Points beside the nostrils and above the upper lip (subnasale, alar base) are NOT safe either: an exaggerated OOO purse or a dropped AHH jaw moves them visibly. Use eye corners plus the bony mid-dorsum of the nose.\n\nThe second most important rule: the overlay region must reach past the chin. A tight mouth box fails on OPEN - the jaw has dropped in the photograph but the base selfie's chin is still closed, producing an open mouth floating above an intact closed chin. The region is mouth-centred but extends below the chin landmark and out to the nasolabial folds, feathered so its boundary lands on static skin.\n\nsrc/core/types.ts is a FROZEN CONTRACT shared with three other modules. Implement against it exactly; do not edit it. Read DESIGN_DECISIONS.md for the rationale behind these rules.\n\nAfter you have settled the approach, you may delegate bounded mechanical sub-work to a lower-cost worker rather than doing it yourself. Write a work order as JSON (task, requirements, constraints, startingPoints, validation, plus complexity / bounded / exploration / risk / expectedCost) and run: node ~/.claude/workers/bin/delegate.js <order.json> --controller codex --json  The router decides whether a cheaper worker is available and affordable and returns the result; if it routes back to you, just do the work. Inspect the resulting diff and validation output yourself before continuing. Keep the geometry reasoning, the mask design and the transform maths in your own hands. Never call Qwen or Gemini directly.\n\nAppend an entry to DESIGN_DECISIONS.md for any genuine design decision you make here (for example the specific mesh indices chosen as rigid anchors and why, or the mask falloff shape) - what you chose, why, and what you rejected.",
+  "requirements": [
+    "src/align/landmarks.ts: wrap @mediapipe/tasks-vision FaceLandmarker. Load the model lazily from /models (it is large); expose detect(image) returning the FaceLandmarks shape from src/core/types.ts, plus a count of faces found. Map MediaPipe's 478-point mesh to our rigid set (eye outer+inner corners and the bony mid-dorsum of the nose), the outer lip contour, and the chin point. Document each chosen mesh index by name.",
+    "src/align/transform.ts: solve a SimilarityTransform (uniform scale, rotation, translation) by least-squares Umeyama over the rigid point sets of two FaceLandmarks. Pure, dependency-free, unit-testable. Also expose apply(transform, point) and invert(transform).",
+    "src/align/region.ts: compute the MouthRegion in neutral-selfie coordinates from the neutral landmarks. Mouth-centred horizontally, spanning from above the upper lip to below the chin landmark, wide enough to include the nasolabial folds. Choose a feather proportional to region size.",
+    "src/align/bake.ts: given the neutral CapturedShot, the four pose CapturedShots, a MouthRegion and per-pose NudgeOffset, produce Record<MouthState, ImageBitmap>. REST is the neutral image unchanged. Each pose frame is the neutral image with the pose photo drawn through the inverse similarity transform, clipped to the region and composited through a feathered alpha mask so no rectangular edge is visible. Apply the NudgeOffset as a post-transform translate+scale about the region centre.",
+    "The feathered mask must be a soft-edged rounded/elliptical falloff, not a hard rectangle. Build it once per region and reuse it across the four poses.",
+    "src/align/quality.ts: implement the capture gates returning CaptureCheck - no-face, multiple-faces, too-dark (mean luma threshold), not-frontal (yaw/roll thresholds), scale-mismatch (inter-ocular distance drifted more than a set fraction from the neutral shot), too-blurry (variance-of-Laplacian or equivalent on the mouth region). Export the thresholds as named constants with a one-line justification each.",
+    "Add vitest unit tests for transform.ts (identity, pure translation, pure rotation, pure scale, a combined case, and robustness to one jittered point) and for region.ts (region contains the lips and reaches below the chin).",
+    "All rendering work uses OffscreenCanvas where available and falls back to a detached HTMLCanvasElement."
+  ],
+  "constraints": [
+    "Do NOT modify src/core/types.ts, src/core/visemeMap.ts, src/main.ts, src/ui/, src/tts/, src/player/ or src/store/. Other workers are editing those concurrently.",
+    "Do not add dependencies beyond @mediapipe/tasks-vision, which is already in package.json.",
+    "All face processing stays on-device. Never send image data anywhere.",
+    "Do not build UI. This slice is pure modules under src/align/.",
+    "If the MediaPipe model file is not present under public/models, write the loader to expect it there and document the exact filename needed in a short comment; do not download anything."
+  ],
+  "startingPoints": [
+    "src/core/types.ts",
+    "src/align/",
+    "DESIGN_DECISIONS.md",
+    "package.json"
+  ],
+  "writeTargets": [
+    "src/align/landmarks.ts",
+    "src/align/transform.ts",
+    "src/align/region.ts",
+    "src/align/bake.ts",
+    "src/align/quality.ts",
+    "src/align/*.test.ts"
+  ],
+  "validation": [
+    "npm run typecheck",
+    "npm test"
+  ],
+  "category": "image-geometry",
+  "complexity": "hard",
+  "bounded": true,
+  "exploration": "none",
+  "risk": "medium",
+  "expectedCost": "medium",
+  "executionStyle": "deep-reasoning",
+  "composition": "atomic",
+  "sliceOf": "talking-face-v1"
+}

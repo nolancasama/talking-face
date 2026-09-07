@@ -1,0 +1,37 @@
+{
+  "id": "tf-ui",
+  "task": "Build all screens for the talking-face app: welcome, the five-step photo capture flow, the alignment preview with an Adjust panel, the main talking screen, and settings.",
+  "notes": "The app lets someone photograph their own face once and then make it appear to speak typed text. The audience includes children, so the interface must feel like a simple consumer camera app - large previews, large buttons, very little text, playful. Never use phonetic or technical terminology in user-facing copy: no 'viseme', no 'phoneme', no 'landmark', no 'alignment transform'. The user photographs 'mouth shapes'.\n\nsrc/core/types.ts is a FROZEN CONTRACT. src/ui/router.ts defines the Screen/Navigator pattern every screen implements. src/ui/styles.css holds the design tokens and the phone shell - use those tokens, do not introduce a second palette. src/main.ts already imports WelcomeScreen from ./ui/screens/welcome and TalkScreen from ./ui/screens/talk; match those paths and export names exactly.\n\nOther workers are concurrently writing src/align/ and src/tts/ + src/player/. Those modules may not exist yet while you work. Import them by the exact paths and signatures listed in the requirements and let typecheck fail on the missing files if necessary - do NOT write your own copies of them, and do not stub them in their own directories.",
+  "requirements": [
+    "src/ui/screens/welcome.ts: WelcomeScreen. Title 'Create your talking face', one large Start button, minimal supporting copy. Takes AvatarStore in its constructor and navigates into the capture flow.",
+    "src/ui/screens/capture.ts: CaptureScreen, parameterised by step. Five steps in order: the neutral selfie, then CLOSED, OPEN, WIDE, ROUND. Copy per step - neutral: 'Look straight at the camera and relax your mouth.'; CLOSED: 'Close your lips like you're saying MMM.'; OPEN: 'Open your mouth like you're saying AHH.'; WIDE: 'Smile slightly and say EEE.'; ROUND: 'Round your lips like you're saying OOO.'",
+    "Capture screen layout: a large front-camera preview (getUserMedia facingMode 'user', mirrored for display), an oval face-position guide overlaid on the preview, a step indicator reading '1 / 5' through '5 / 5', a big circular Capture button, and Retake / Next once a shot is taken. Release the camera stream in unmount() without fail.",
+    "On capture, run the shot through checkShot() from '../../align/quality' and, when it returns ok:false, show friendly guidance instead of the technical reason - no-face: 'I can't see your face - move a bit closer.'; multiple-faces: 'Looks like more than one face. Try again on your own.'; too-dark: 'It's a bit dark - try facing a window.'; not-frontal: 'Turn to face the camera straight on.'; scale-mismatch: 'Try holding the phone about where you held it last time.'; too-blurry: 'That came out blurry - hold still a moment.' Keep the shot only when ok:true.",
+    "src/ui/screens/preview.ts: PreviewScreen. After all five shots, call the bake pipeline from '../../align/bake' to build the five frames, then auto-cycle REST -> CLOSED -> OPEN -> WIDE -> ROUND on a canvas at roughly 500ms per state so the user can see each. Buttons: 'Looks Good' and 'Retake Photos'. A secondary 'Adjust' control reveals per-pose X / Y / scale sliders that re-bake and update the preview live. 'Looks Good' saves via AvatarStore.saveAvatar and goes to TalkScreen.",
+    "src/ui/screens/talk.ts: TalkScreen, the main screen. The avatar canvas is visually dominant. Below it: a text field with placeholder 'Type something for me to say…', a friendly voice selector, an optional speed control, and a large Speak button. Constructor takes (avatar, store).",
+    "Speak flow: disable Speak, show a subtle generating state, call the provider from '../../tts' to generate audio and cues, build the timeline with buildTimeline from '../../core/timeline', construct the appropriate clock from '../../player/clock', drive LipSyncPlayer from '../../player/lipSyncPlayer', then re-enable controls and return to REST. Afterwards offer 'Play Again' and 'Edit Text'.",
+    "'Play Again' MUST reuse the existing audio and timeline rather than regenerating. Editing the text invalidates the cached result so the next Speak regenerates.",
+    "Persist the chosen voice and speed through AvatarStore.savePrefs and restore them on load.",
+    "src/ui/screens/settings.ts: a small settings screen reachable from TalkScreen, containing 'Redo Face' (clearAvatar, then back to the capture flow, with a confirmation step) and a short plain-language note that photos never leave the device.",
+    "Component CSS lives in src/ui/screens/screens.css imported once; use the existing tokens from styles.css. Every interactive control meets the --tap minimum target. Layout must work in portrait on a small phone without vertical scrolling on the capture and talk screens."
+  ],
+  "constraints": [
+    "Do NOT modify src/core/types.ts, src/core/visemeMap.ts, src/tts/config.ts, src/store/avatarStore.ts, src/align/ or src/player/. Other workers own those.",
+    "You may modify src/ui/styles.css only to add genuinely shared primitives; do not restyle the existing tokens.",
+    "Do not add dependencies and do not introduce a UI framework. Plain DOM and TypeScript.",
+    "No technical vocabulary in any user-facing string.",
+    "Do not implement face detection, alignment, TTS or playback logic. Import them.",
+    "Handle camera permission denial with a clear message and a retry affordance rather than a thrown error."
+  ],
+  "startingPoints": ["src/ui/router.ts", "src/ui/styles.css", "src/main.ts", "src/core/types.ts", "src/store/avatarStore.ts"],
+  "writeTargets": ["src/ui/screens/welcome.ts", "src/ui/screens/capture.ts", "src/ui/screens/preview.ts", "src/ui/screens/talk.ts", "src/ui/screens/settings.ts", "src/ui/screens/screens.css"],
+  "validation": ["npm run typecheck"],
+  "category": "ui",
+  "complexity": "medium",
+  "bounded": true,
+  "exploration": "none",
+  "risk": "low",
+  "expectedCost": "large",
+  "composition": "atomic",
+  "sliceOf": "talking-face-v1"
+}
