@@ -311,3 +311,44 @@ dependency is gone.
 that word's length, and the first word runs on an unlearned pace. Real viseme
 timing from a provider remains the actual fix; this estimator exists so the
 pipeline works with no credentials.
+
+---
+
+## 2026-09-07 — Continuous articulation over five reference frames (Stage 1)
+
+**Decision.** The five baked frames become reference *extremes* rather than the
+only renderable states. `src/core/articulation.ts` describes the mouth as four
+continuous controls (jawOpen, lipWidth, lipRound, lipClosure), smoothed
+per-control at different rates, and resolved to blend weights over at most two
+reference frames. Adds a 50ms anticipatory visual lead, cuts the frame
+crossfade from 45ms to 18ms, and makes a span's *commitment* proportional to
+its duration.
+
+**Why.** Swapping complete photographs at phoneme speed moves jaw, chin,
+cheeks, skin texture and lighting simultaneously, which reads as photographs
+being swapped rather than a face speaking. Three separate mechanisms attack
+that: partial commitment stops brief phonemes triggering full photographic
+swaps at all; differential smoothing keeps the jaw (90ms) slower than the lips
+(45ms), since a real jaw cannot re-articulate per consonant; and the much
+shorter crossfade limits the double-lips/double-teeth ghosting that
+alpha-blending two mouth photographs inevitably produces.
+
+Closure is exempt from partial commitment and smoothed fastest (28ms). Lips
+meeting for M/B/P is the most legible event this five-state model can express,
+and a half-committed M reads as a bug rather than as restraint.
+
+**Rejected for now: shrinking the replacement region.** The plan proposed
+reducing the crop so less of the lower face is swapped. That re-introduces a
+fixed defect: with a tight region the OPEN pose puts a dropped jaw over the
+base photo's intact closed chin. The region can only shrink once geometric jaw
+warping can move the chin, which is Stage 2.
+
+**Deferred to Stage 2: geometric landmark warping.** It is the right answer to
+the underlying problem -- with five welded frames, jaw and lips are literally
+the same pixels and cannot be separated post-hoc. It is blocked on geometry we
+do not store: `StoredAvatar` holds five flattened PNGs, and the raw pose photos
+are deliberately discarded after baking. The unblock is to re-detect lip
+contours from the baked frames themselves (they are aligned photographs) at
+load time, which needs no re-capture -- but it is a schema change, not a
+rendering tweak, and it should follow evidence from Stage 1 rather than precede
+it.
