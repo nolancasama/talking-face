@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-09-07
+Last updated: 2026-09-08
 
 ## What this is
 
@@ -30,6 +30,13 @@ working PWA (43kB app + 126kB MediaPipe, ~176KB precached shell).
 - **Storage** — `src/store/avatarStore.ts` : IndexedDB, one avatar, no account.
 - **Assets** — `npm run setup:models` vendors the landmark model and WASM into
   `public/models/` (gitignored, reproduced by postinstall).
+- **Mesh (Stage 2, milestone 1)** — `src/mesh/` : a 37-vertex / 60-triangle
+  lower-face mesh (three 12-point rings + a synthetic centroid), per-pose
+  geometry re-detected from the *baked* frames, an additive delta solver with
+  per-vertex clamping, and a Canvas 2D piecewise-affine warp renderer reusing
+  `bake.ts`'s feather mask. Reachable only from the debug-only **Mesh lab**
+  screen (`?debug=1` → "Mesh lab"). `StoredAvatar` is now schemaVersion 3
+  (`meshGeometry?` is defined but nothing writes it yet).
 
 ## Not yet verified
 
@@ -47,6 +54,14 @@ Also unverified on a device: camera capture flow, the quality-gate thresholds
 
 ## Next steps
 
+0. **The Stage 2 gate.** Capture an avatar, then open `?debug=1` → **Mesh
+   lab** and drag the four sliders. Two things are being judged: whether the
+   mesh warp looks like one photograph moving (rather than photos swapping),
+   and whether the landmark rings actually sit where they should — the
+   inner-lip and jaw/cheek MediaPipe indices were never dot-plotted against a
+   real frame, so a ring landing in the wrong place is a live possibility.
+   Milestones 2 (speech) and 3 (teeth/tongue/cavity) are deliberately blocked
+   behind this looking convincing.
 1. `npm install && npm run dev`, open on a phone over HTTPS or localhost, and
    run the full capture → preview → speak loop with a real face.
 2. Judge the WIDE and OPEN frames specifically; tune `REGION_*` constants in
@@ -59,6 +74,8 @@ Also unverified on a device: camera capture flow, the quality-gate thresholds
 
 ## Codex / delegated work
 
-All three delegated slices (alignment, speech, UI) are complete, reviewed and
-committed. Nothing is in flight. Review corrections are recorded in
+All delegated slices (alignment, speech, UI, and the Stage 2 mesh lab) are
+complete and reviewed. Nothing is in flight. The mesh-lab slice
+(`.ai/wo-mesh-lab.json`) is reviewed but **uncommitted** — it is working-tree
+only, pending the visual gate above. Review corrections are recorded in
 DESIGN_DECISIONS.md and in the commit messages.

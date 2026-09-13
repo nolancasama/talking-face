@@ -16,7 +16,7 @@ const AVATARS = 'avatars';
 const PREFS = 'prefs';
 const AVATAR_KEY = 'current';
 const PREFS_KEY = 'prefs';
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 
 const DEFAULT_PREFS: Preferences = { voiceId: '', speed: 1 };
 
@@ -79,11 +79,15 @@ function poseKeys<T>(frames: Partial<Record<MouthPose, T>>): MouthPose[] {
   return ALL_POSES.filter((pose) => frames[pose] !== undefined);
 }
 
-/** Return a version-2 view without mutating or rewriting the persisted record. */
+/** Return a version-3 view without mutating or rewriting the persisted record. */
 export function migrateStoredAvatar(stored: PersistedAvatar): StoredAvatar {
   if (stored.schemaVersion === CURRENT_SCHEMA_VERSION) {
     if (!stored.frames.REST) throw new Error('Stored avatar is missing the REST frame');
     return stored;
+  }
+  if (stored.schemaVersion === 2) {
+    if (!stored.frames.REST) throw new Error('Stored avatar is missing the REST frame');
+    return { ...stored, schemaVersion: CURRENT_SCHEMA_VERSION, meshGeometry: undefined };
   }
   if (stored.schemaVersion !== undefined && stored.schemaVersion !== 1) {
     throw new Error(`Unsupported avatar schema version ${stored.schemaVersion}`);
@@ -112,6 +116,7 @@ export function migrateStoredAvatar(stored: PersistedAvatar): StoredAvatar {
     frames,
     region: legacy.region,
     nudge,
+    meshGeometry: undefined,
   };
 }
 

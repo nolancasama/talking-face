@@ -97,6 +97,16 @@
 .inspector-state-buttons button { min-width: 0; padding: 0 2px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9px; }
 .inspector-btn--absent { border-style: dashed; opacity: 0.6; }
 
+.mesh-lab-screen { overflow: hidden; }
+.mesh-lab-status { margin: 0; }
+.mesh-lab-notes { min-height: 16px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; color: var(--text-dim); font: 10px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.mesh-lab-stage { flex: 1 1 auto; min-height: 120px; }
+.mesh-lab-controls { display: grid; gap: 4px; }
+.mesh-lab-control { display: grid; grid-template-columns: 84px 40px 1fr; align-items: center; gap: 8px; color: var(--text-dim); font: 11px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.mesh-lab-control output { color: var(--text); text-align: right; }
+.mesh-lab-control input { width: 100%; min-height: 30px; accent-color: var(--accent); }
+.mesh-lab-degenerate { margin: 0; text-align: center; font: 10px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace; }
+
 .settings-screen { padding-top: 4px; }
 .settings-back { align-self: flex-start; }
 .settings-card, .confirm-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px; }

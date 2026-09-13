@@ -370,3 +370,32 @@ so an OPEN from a consonant fallback commits less far than an OPEN from a true
 open vowel -- no new photographs, just a continuous weight. Deliberately not
 done yet: it is a contract change across the mapper, timeline and renderer,
 and it should follow visual evidence rather than precede it.
+
+---
+
+## 2026-09-08 — Stage 2 milestone 1: mesh-warp slider proof of concept
+
+**Decision.** Add a debug-only Mesh lab that re-detects MediaPipe landmarks on
+the already-baked REST, CLOSED, BIG_OPEN, WIDE, and ROUND frames, builds a
+37-vertex/60-triangle mouth-and-jaw mesh, and warps the user's REST photograph
+with four independent sliders. The target solver adds the four reference-pose
+deltas and limits each combined vertex displacement to the largest movement
+seen for that vertex in a single reference pose. The resulting canvas is
+clipped with the existing mouth-region feather rather than introducing a new
+seam algorithm.
+
+The candidate landmark arrays remain
+`[61,40,37,0,267,270,291,321,314,17,84,91]`,
+`[78,80,82,13,312,310,308,318,317,14,87,88]`, and
+`[205,187,214,172,136,152,434,397,365,378,411,425]`; no substitutions were
+made. Real-frame dot-plot confirmation is still pending because no locally
+captured baked avatar frames were available in the implementation workspace,
+so this entry does not claim visual verification that did not occur.
+
+**Why.** Geometry lets jaw, chin, cheeks, and lips move at different amounts
+without crossfading two complete photographs, while summing deltas preserves
+co-occurring articulators such as jaw opening and lip widening. This milestone
+is deliberately isolated behind the development-mode screen. LipSyncPlayer,
+the timeline, and TTS are untouched; production playback continues using the
+existing baked-frame renderer until a human judges the mesh deformation on a
+real captured face and explicitly gates a later milestone.

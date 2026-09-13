@@ -44,6 +44,8 @@ const NOSE_TIP_MESH_INDEX = 1; // used only to estimate yaw; never used for regi
 
 export interface LandmarkDetection {
   landmarks: FaceLandmarks | null;
+  /** Complete MediaPipe mesh in source-image pixels for geometry consumers. */
+  meshPoints?: readonly Point[] | null;
   faceCount: number;
 }
 
@@ -56,9 +58,11 @@ export async function detect(image: ImageSource): Promise<LandmarkDetection> {
   const result = landmarker.detect(image);
   const faceCount = result.faceLandmarks.length;
   const firstFace = result.faceLandmarks[0];
+  const meshPoints = firstFace ? mapMesh(firstFace, image) : null;
   return {
     faceCount,
-    landmarks: firstFace ? mapFace(firstFace, image) : null,
+    landmarks: meshPoints ? mapFace(meshPoints) : null,
+    meshPoints,
   };
 }
 
@@ -81,12 +85,16 @@ async function createLandmarker(): Promise<Landmarker> {
   });
 }
 
-function mapFace(mesh: readonly NormalizedLandmark[], image: ImageSource): FaceLandmarks {
+function mapMesh(mesh: readonly NormalizedLandmark[], image: ImageSource): readonly Point[] {
   const { width, height } = imageDimensions(image);
+  return mesh.map((landmark) => ({ x: landmark.x * width, y: landmark.y * height }));
+}
+
+function mapFace(mesh: readonly Point[]): FaceLandmarks {
   const toPoint = (index: number): Point => {
     const landmark = mesh[index];
     if (!landmark) throw new Error(`MediaPipe face mesh is missing landmark ${index}`);
-    return { x: landmark.x * width, y: landmark.y * height };
+    return landmark;
   };
 
   const rigid = RIGID_MESH_INDICES.map(toPoint);

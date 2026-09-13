@@ -163,7 +163,7 @@ describe('legacy avatar migration', () => {
     } satisfies LegacyStoredAvatarV1;
 
     const migrated = migrateStoredAvatar(legacy);
-    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.schemaVersion).toBe(3);
     expect(migrated.frames.BIG_OPEN).toBe(open);
     expect('OPEN' in migrated.frames).toBe(false);
     expect(migrated.nudge.BIG_OPEN).toEqual({ dx: 1, dy: 2, scale: 1.1 });

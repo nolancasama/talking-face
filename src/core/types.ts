@@ -133,6 +133,12 @@ export interface Avatar {
 }
 
 /** Storage form of an Avatar. Raw pose photos are deliberately NOT retained. */
+export interface StoredMeshGeometry {
+  topologyVersion: number;
+  restPoints: readonly Point[];
+  deltas: Partial<Record<MouthPose, readonly Point[]>>;
+}
+
 export interface StoredAvatar {
   /**
    * Schema version. 1 = the original five-pose vocabulary (REST/CLOSED/OPEN/
@@ -153,6 +159,7 @@ export interface StoredAvatar {
   frames: Partial<Record<MouthPose, Blob>> & { REST: Blob };
   region: MouthRegion;
   nudge: Partial<Record<MouthPose, NudgeOffset>>;
+  meshGeometry?: StoredMeshGeometry;
 }
 
 export interface Preferences {

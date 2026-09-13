@@ -110,7 +110,7 @@ function nudgedMatrix(
   };
 }
 
-function buildFeatherMask(region: MouthRegion): RenderCanvas {
+export function buildFeatherMask(region: MouthRegion): RenderCanvas {
   const width = Math.ceil(region.width);
   const height = Math.ceil(region.height);
   const mask = createCanvas(width, height);
@@ -148,7 +148,7 @@ function buildFeatherMask(region: MouthRegion): RenderCanvas {
 }
 
 /** Per-axis alpha ramp: 0 at the edge, 1 once `feather` px inside, smoothstepped. */
-function edgeRamp(length: number, feather: number): Float32Array {
+export function edgeRamp(length: number, feather: number): Float32Array {
   const ramp = new Float32Array(length);
   for (let i = 0; i < length; i += 1) {
     const distance = Math.min(i + 0.5, length - (i + 0.5));

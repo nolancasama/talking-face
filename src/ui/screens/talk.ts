@@ -7,6 +7,7 @@ import { friendlyVoices, pickProvider } from '../../tts';
 import { DebugOverlay, isDebugModeEnabled } from '../debugOverlay';
 import type { Navigator, Screen } from '../router';
 import { InspectorScreen } from './inspector';
+import { MeshLabScreen } from './meshLab';
 import { SettingsScreen } from './settings';
 
 type CachedSpeech = {
@@ -51,6 +52,12 @@ export class TalkScreen implements Screen {
       inspector.textContent = 'Inspect frames';
       inspector.addEventListener('click', () => void nav.go(new InspectorScreen(this.avatar)));
       top.insertBefore(inspector, settings);
+      const meshLab = document.createElement('button');
+      meshLab.className = 'debug-inspector-link';
+      meshLab.type = 'button';
+      meshLab.textContent = 'Mesh lab';
+      meshLab.addEventListener('click', () => void nav.go(new MeshLabScreen(this.avatar)));
+      top.insertBefore(meshLab, settings);
     }
 
     const stage = document.createElement('div');
