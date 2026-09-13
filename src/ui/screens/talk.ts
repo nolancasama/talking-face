@@ -69,7 +69,11 @@ export class TalkScreen implements Screen {
     stage.append(canvas);
     if (debugMode) {
       this.debugOverlay = new DebugOverlay(() => this.cached
-        ? { player: this.cached.player, timeline: this.cached.timeline }
+        ? {
+          player: this.cached.player,
+          timeline: this.cached.timeline,
+          timing: this.cached.result.externalPlayback?.timingDebug?.() ?? null,
+        }
         : null);
       this.debugOverlay.mount(stage);
     }

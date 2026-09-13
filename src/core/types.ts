@@ -213,6 +213,34 @@ export interface ExternalPlayback {
   /** Best-effort position in ms; may be interpolated from boundary events. */
   positionMs(): number;
   onEnd(cb: () => void): void;
+  /** Optional live timing state for the debug overlay. */
+  timingDebug?(): PlaybackTimingDebug;
+}
+
+/** Phrase break after a word: hard (. ? !) holds for the next boundary. */
+export type PunctuationBarrier = 'none' | 'soft' | 'hard';
+
+/** Read-only clock diagnostics, so timing faults can be told apart from mapping faults. */
+export interface PlaybackTimingDebug {
+  readonly source: string;
+  readonly phase: 'idle' | 'estimating' | 'word' | 'hold' | 'paused' | 'ended';
+  /** Word of the latest accepted boundary event. */
+  readonly word: string | null;
+  readonly charIndex: number | null;
+  /** Timeline position of the latest anchor. */
+  readonly anchorMs: number;
+  /** Where free-running pace alone would put the clock, ignoring holds. */
+  readonly estimatedMs: number;
+  /** The position actually driving the mouth. */
+  readonly positionMs: number;
+  readonly paceScale: number;
+  readonly paceSamples: number;
+  readonly hold: {
+    readonly barrier: PunctuationBarrier;
+    readonly punctuation: string;
+    readonly heldMs: number;
+    readonly nextWord: string;
+  } | null;
 }
 
 export interface TTSProvider {

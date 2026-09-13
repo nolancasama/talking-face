@@ -399,3 +399,44 @@ is deliberately isolated behind the development-mode screen. LipSyncPlayer,
 the timeline, and TTS are untouched; production playback continues using the
 existing baked-frame renderer until a human judges the mesh deformation on a
 real captured face and explicitly gates a later milestone.
+
+---
+
+## 2026-09-13 — Web Speech clock: punctuation holds and barrier-aware pace learning
+
+**Decision.** Web Speech timing moved into `src/tts/webSpeechTiming.ts`
+(`WebSpeechTimingClock`, pure, injected `now()`). Authority order is now
+*actual word boundary > punctuation barrier > learned pace > character
+estimate*.
+
+- The estimator classifies the text between each pair of words from the
+  original string: `. ? !` (and `…`) are **hard** barriers, `, ; :` and dashes
+  are **soft**. Each widens the inter-word gap into a REST slot (hard ≥188ms,
+  soft ≥95ms estimate-time). Decimal points and thousands separators are not
+  barriers.
+- Once the engine has sent at least one boundary, the clock **parks** at a
+  barrier — at `next.startMs − VISUAL_LEAD_MS − 1`, so the player's lookahead
+  still lands on REST — and waits for the next word's boundary, which
+  re-anchors it to that word's start. A hard hold has only a 2s safety release
+  (for a dropped boundary); a soft hold releases after 400ms. The slot length
+  is not the pause length; the voice decides that.
+- `paceScale` is learned only from **adjacent word pairs with no barrier
+  between them**, as a log-space moving average (α 0.35), and never across a
+  pause/resume. Previously every boundary pair overwrote it, so a sentence
+  pause between `you?` and `I` read as a 4× slower voice for the next
+  sentence, and a single short word swung it wildly.
+- Duplicate or out-of-order boundaries are ignored rather than re-anchoring
+  backwards; a charIndex on the punctuation/space before a word maps to the
+  following word.
+
+**Why.** No boundary fires during a sentence pause, so the old clock
+free-ran through the estimate's 55ms gap into the next sentence, then snapped
+backwards when that sentence's first boundary arrived (the player treats a
+backwards clock as a hard reset), and learned the silence as slow speech.
+
+**Rejected.** A fixed per-punctuation pause (e.g. period = 400ms) as the
+primary mechanism: voices differ and the boundary already tells us when speech
+resumes. Holding the utterance to wait for the face: the audio is the master.
+Capping the clock at every ordinary word start: it would change behaviour for
+unpunctuated text and freeze the mouth whenever the estimate runs ahead;
+revisit only with evidence.

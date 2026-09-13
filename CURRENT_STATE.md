@@ -71,6 +71,14 @@ Also unverified on a device: camera capture flow, the quality-gate thresholds
    loose in at least one dimension.
 4. Stand up the `/api/tts` proxy for Azure. Until then the Web Speech fallback
    runs, which has estimated (not real) viseme timing and noticeably worse sync.
+5. **Web Speech punctuation holds (2026-09-13, unit-tested, not yet observed).**
+   `src/tts/webSpeechTiming.ts` now parks the mouth at REST at `. ? !` until
+   the next word boundary and no longer learns sentence pauses as slow speech
+   (see DESIGN_DECISIONS). Verify in Chrome with `?debug=1` on
+   "One. Two. Three. Four. Five." — the `speech` row should alternate
+   `WORD: One` → `PUNCTUATION HOLD (.) … waiting for "Two"` → `WORD: Two`.
+   If the row never shows WORD, the voice sends no boundary events (common on
+   Android) and only the estimated REST slot applies.
 
 ## Codex / delegated work
 

@@ -1,16 +1,16 @@
-import type { ExternalPlayback, SpeechCue, SpeechResult, TTSProvider, Voice } from '../core/types';
+import type {
+  ExternalPlayback,
+  PlaybackTimingDebug,
+  SpeechCue,
+  SpeechResult,
+  TTSProvider,
+  Voice,
+} from '../core/types';
+import { WebSpeechTimingClock, barrierGapMs, classifyGap } from './webSpeechTiming';
+import type { WordTiming } from './webSpeechTiming';
 
 const LABELS = ['Female 1', 'Female 2', 'Male 1', 'Male 2'] as const;
 const BASE_CHARACTER_MS = 72;
-
-interface WordTiming {
-  text: string;
-  charIndex: number;
-  startMs: number;
-  endMs: number;
-  cueStart: number;
-  cueEnd: number;
-}
 
 function browserVoices(): SpeechSynthesisVoice[] {
   return typeof speechSynthesis === 'undefined' ? [] : speechSynthesis.getVoices();
@@ -86,7 +86,12 @@ function groupWeight(group: string): number {
  *  on, which reads as continuous mouth movement rather than speech. */
 const INTER_WORD_GAP_MS = 55;
 
-function estimate(text: string, speed: number): { cues: SpeechCue[]; words: WordTiming[]; durationMs: number } {
+/**
+ * Estimate cue timing from text. Punctuation between words (read from the
+ * original string) widens the gap into a REST slot; see webSpeechTiming.ts for
+ * why its length is only a fallback once boundary events arrive.
+ */
+export function estimate(text: string, speed: number): { cues: SpeechCue[]; words: WordTiming[]; durationMs: number } {
   const safeSpeed = Math.max(0.1, speed);
   const gap = INTER_WORD_GAP_MS / safeSpeed;
   const matches = [...text.matchAll(/[\p{L}\p{N}']+/gu)];
@@ -95,8 +100,14 @@ function estimate(text: string, speed: number): { cues: SpeechCue[]; words: Word
   let cursor = 0;
 
   for (const [wordIndex, match] of matches.entries()) {
-    if (wordIndex > 0) cursor += gap;
+    const previous = words[wordIndex - 1];
+    if (previous) cursor += barrierGapMs(previous.barrier, gap, safeSpeed);
     const word = match[0];
+    const wordEnd = (match.index ?? 0) + word.length;
+    const next = matches[wordIndex + 1];
+    const { barrier, punctuation } = next
+      ? classifyGap(text.slice(wordEnd, next.index ?? wordEnd), word, next[0])
+      : { ...classifyGap(text.slice(wordEnd), word, ''), barrier: 'none' as const };
     const duration = word.length * BASE_CHARACTER_MS / safeSpeed;
     const groups = phonemeGroups(word);
     const weights = groups.map(groupWeight);
@@ -116,6 +127,8 @@ function estimate(text: string, speed: number): { cues: SpeechCue[]; words: Word
       endMs: cursor + duration,
       cueStart,
       cueEnd: cues.length,
+      barrier,
+      punctuation,
     });
     cursor += duration;
   }
@@ -125,43 +138,38 @@ function estimate(text: string, speed: number): { cues: SpeechCue[]; words: Word
 class SpeechSynthesisPlayback implements ExternalPlayback {
   private readonly callbacks = new Set<() => void>();
   private utterance: SpeechSynthesisUtterance | null = null;
-  private startedAt = 0;
-  private anchorWallMs = 0;
-  private anchorSpeechMs = 0;
   private ended = false;
   private paused = false;
   /**
-   * Estimated-time milliseconds to advance per real millisecond. The character
-   * count estimate is crude and commonly off by a wide factor from the voice's
-   * real pace, so without this the mouth finishes its whole timeline while the
-   * synthesiser is still talking. Learned from consecutive word boundaries.
+   * Position, pace learning and punctuation holds all live in the clock. This
+   * class only owns the utterance lifecycle and forwards its events.
+   *
+   * Boundary events deliberately ignore `elapsedTime`: its unit is not reliable
+   * across browsers (the spec says seconds, engines have shipped ms), and
+   * reading it wrongly slams the clock past the end of the timeline. The event
+   * already carries the one fact that matters -- this word starts NOW.
    */
-  private paceScale = 1;
-  private lastBoundaryWallMs = 0;
-  private lastBoundarySpeechMs = 0;
-  private hasBoundary = false;
+  private readonly clock: WebSpeechTimingClock;
 
   constructor(
     private readonly text: string,
     private readonly voiceId: string,
     private readonly speed: number,
-    private readonly words: WordTiming[],
-    private readonly estimatedDurationMs: number,
-  ) {}
+    words: WordTiming[],
+    estimatedDurationMs: number,
+  ) {
+    this.clock = new WebSpeechTimingClock(words, estimatedDurationMs);
+  }
 
   start(): void {
     if (this.utterance && !this.ended) return;
     this.ended = false;
     this.paused = false;
-    this.startedAt = performance.now();
-    this.anchorWallMs = this.startedAt;
-    this.anchorSpeechMs = 0;
-    this.paceScale = 1;
-    this.hasBoundary = false;
+    this.clock.start();
     const utterance = new SpeechSynthesisUtterance(this.text);
     utterance.rate = Math.max(0.1, Math.min(10, this.speed));
     utterance.voice = browserVoices().find((voice) => voice.voiceURI === this.voiceId) ?? null;
-    utterance.onboundary = (event) => this.correctAtBoundary(event.charIndex);
+    utterance.onboundary = (event) => this.clock.boundary(event.charIndex, event.name);
     utterance.onend = () => this.finish();
     utterance.onerror = () => this.finish();
     this.utterance = utterance;
@@ -177,82 +185,33 @@ class SpeechSynthesisPlayback implements ExternalPlayback {
     this.utterance = null;
     this.ended = false;
     this.paused = false;
-    this.anchorSpeechMs = 0;
+    this.clock.stop();
   }
 
   pause(): void {
     if (!this.utterance || this.ended || this.paused) return;
-    this.anchorSpeechMs = this.positionMs();
+    this.clock.pause();
     speechSynthesis.pause();
     this.paused = true;
   }
 
   resume(): void {
     if (!this.utterance || this.ended || !this.paused) return;
-    this.anchorWallMs = performance.now();
+    this.clock.resume();
     this.paused = false;
     speechSynthesis.resume();
   }
 
   positionMs(): number {
-    if (this.ended) return this.estimatedDurationMs;
-    if (!this.utterance) return 0;
-    if (this.paused) return this.anchorSpeechMs;
-    const elapsed = (performance.now() - this.anchorWallMs) * this.paceScale;
-    return Math.max(0, Math.min(this.estimatedDurationMs, this.anchorSpeechMs + elapsed));
+    return this.clock.positionMs();
+  }
+
+  timingDebug(): PlaybackTimingDebug {
+    return this.clock.debugState();
   }
 
   onEnd(cb: () => void): void {
     this.callbacks.add(cb);
-  }
-
-  /**
-   * Re-anchor the clock when the synthesiser reports a word boundary.
-   *
-   * This deliberately ignores the event's `elapsedTime`. Its unit is not
-   * reliable across browsers -- the spec says seconds, but engines have
-   * shipped milliseconds -- and reading it in the wrong unit multiplies the
-   * anchor by 1000, which slams the clock past the end of the timeline on the
-   * first boundary and leaves the mouth parked on the trailing REST span for
-   * the rest of the utterance.
-   *
-   * None of that value is needed. The event already carries the one fact that
-   * matters: this word is starting NOW. The timeline is frozen in estimate
-   * coordinates, so the correct anchor is simply that word's estimated start.
-   * Position then advances in wall time until the next boundary re-anchors it,
-   * bounding drift to a single word's length regardless of how far the
-   * estimate is from the synthesiser's real pace.
-   *
-   * Note the cue objects are intentionally left alone: buildTimeline copies
-   * the spans it derives, so mutating cues here would change nothing that is
-   * actually rendered.
-   */
-  private correctAtBoundary(charIndex: number): void {
-    const word = this.words.find((candidate, index) => {
-      const next = this.words[index + 1];
-      return charIndex >= candidate.charIndex && (!next || charIndex < next.charIndex);
-    });
-    if (!word) return;
-    const now = performance.now();
-
-    // Two boundaries give the voice's real pace against the estimate: how much
-    // estimated time was meant to pass versus how much really did. Clamped,
-    // because a repeated or out-of-order boundary would otherwise produce a
-    // wild or negative ratio.
-    if (this.hasBoundary) {
-      const realDelta = now - this.lastBoundaryWallMs;
-      const estimatedDelta = word.startMs - this.lastBoundarySpeechMs;
-      if (realDelta > 1 && estimatedDelta > 0) {
-        const observed = estimatedDelta / realDelta;
-        this.paceScale = Math.min(4, Math.max(0.25, observed));
-      }
-    }
-
-    this.anchorSpeechMs = word.startMs;
-    this.anchorWallMs = now;
-    this.lastBoundaryWallMs = now;
-    this.lastBoundarySpeechMs = word.startMs;
-    this.hasBoundary = true;
   }
 
   private finish(): void {
@@ -260,6 +219,7 @@ class SpeechSynthesisPlayback implements ExternalPlayback {
     this.ended = true;
     this.paused = false;
     this.utterance = null;
+    this.clock.finish();
     for (const callback of this.callbacks) callback();
   }
 }

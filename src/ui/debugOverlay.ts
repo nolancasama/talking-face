@@ -1,6 +1,6 @@
 import { VISUAL_LEAD_MS } from '../core/articulation';
 import type { Articulation } from '../core/articulation';
-import type { MouthPose, MouthTimeline } from '../core/types';
+import type { MouthPose, MouthTimeline, PlaybackTimingDebug } from '../core/types';
 import type { LipSyncPlayer } from '../player/lipSyncPlayer';
 
 const DEBUG_STORAGE_KEY = 'talking-face:debug';
@@ -57,6 +57,18 @@ type ControlElements = {
 export interface DebugSession {
   readonly player: LipSyncPlayer;
   readonly timeline: MouthTimeline;
+  /** Present for clocks that expose timing state (Web Speech). */
+  readonly timing?: PlaybackTimingDebug | null;
+}
+
+/** One-line clock phase: tells a timing fault apart from a mapping fault. */
+export function describeTiming(timing: PlaybackTimingDebug): string {
+  if (timing.phase === 'hold' && timing.hold) {
+    const kind = timing.hold.barrier === 'hard' ? 'PUNCTUATION HOLD' : 'SOFT HOLD';
+    return `${kind} (${timing.hold.punctuation}) ${timing.hold.heldMs.toFixed(0)}ms · waiting for “${timing.hold.nextWord}”`;
+  }
+  if (timing.phase === 'word') return `WORD: ${timing.word ?? '?'} @${timing.charIndex ?? '?'}`;
+  return timing.phase.toUpperCase();
 }
 
 /** A separate, read-only diagnostic surface for LipSyncPlayer state. */
@@ -67,6 +79,8 @@ export class DebugOverlay {
   private readonly clockValue = document.createElement('span');
   private readonly visualValue = document.createElement('span');
   private readonly weightsValue = document.createElement('span');
+  private readonly speechValue = document.createElement('strong');
+  private readonly paceValue = document.createElement('span');
   private readonly timelineCanvas = document.createElement('canvas');
   private readonly controls = new Map<keyof Articulation, ControlElements>();
   private animationFrame: number | null = null;
@@ -108,6 +122,8 @@ export class DebugOverlay {
     const leadValue = document.createElement('span');
     leadValue.textContent = `${VISUAL_LEAD_MS}`;
     const lead = this.makeMetric('VISUAL_LEAD_MS', leadValue, ' ms');
+    const speech = this.makeMetric('speech', this.speechValue);
+    const pace = this.makeMetric('anchor/est/pace', this.paceValue);
 
     this.timelineCanvas.className = 'debug-timeline';
     this.timelineCanvas.setAttribute('aria-label', 'Mouth timeline and visual-time playhead');
@@ -120,7 +136,7 @@ export class DebugOverlay {
       item.append(swatch, state);
       legend.append(item);
     }
-    this.root.append(heading, controls, poses, weights, clock, visual, lead, this.timelineCanvas, legend);
+    this.root.append(heading, controls, poses, weights, clock, visual, lead, speech, pace, this.timelineCanvas, legend);
   }
 
   mount(host: HTMLElement): void {
@@ -160,6 +176,11 @@ export class DebugOverlay {
     this.weightsValue.textContent = snapshot.poseWeights
       .map(({ pose, weight }) => `${pose} ${weight.toFixed(3)}`)
       .join(' + ');
+    const timing = session.timing;
+    this.speechValue.textContent = timing ? describeTiming(timing) : 'n/a (audio clock)';
+    this.paceValue.textContent = timing
+      ? `${timing.anchorMs.toFixed(0)} / ${timing.estimatedMs.toFixed(0)} → ${timing.positionMs.toFixed(0)} ms · ×${timing.paceScale.toFixed(2)} (n=${timing.paceSamples})`
+      : '—';
 
     for (const key of ARTICULATION_KEYS) {
       const elements = this.controls.get(key)!;
@@ -180,6 +201,8 @@ export class DebugOverlay {
     this.clockValue.textContent = '—';
     this.visualValue.textContent = '—';
     this.weightsValue.textContent = '—';
+    this.speechValue.textContent = '—';
+    this.paceValue.textContent = '—';
     for (const elements of this.controls.values()) {
       elements.value.textContent = '—';
       elements.fill.style.width = '0';
