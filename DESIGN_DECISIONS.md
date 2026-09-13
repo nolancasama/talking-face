@@ -440,3 +440,54 @@ resumes. Holding the utterance to wait for the face: the audio is the master.
 Capping the clock at every ordinary word start: it would change behaviour for
 unpunctuated text and freeze the mouth whenever the estimate runs ahead;
 revisit only with evidence.
+
+---
+
+## 2026-09-13 — Web Speech clock epoch is utterance.onstart, not speak()
+
+**Decision.** `WebSpeechTimingClock` now has a waiting state. `start()` (called
+right before `speechSynthesis.speak()`) only records the request; position
+stays 0 until the engine reports speech has begun. The epoch is set by, in
+order of preference: `utterance.onstart`; a word boundary that arrives first
+(it proves speech started; the anchor places the clock, and a later onstart is
+ignored so the clock never moves back); or a 2s safety fallback if neither
+arrives (pause time excluded). A late onstart corrects a fallback start as long
+as no boundary has anchored yet. The estimate also begins with a
+`START_REST_MS` (51ms) REST slot, sized from `VISUAL_LEAD_MS`, so the player's
+50ms lookahead from a waiting clock lands on REST instead of the first sound.
+
+**Why.** The epoch was the moment speak() was requested, so the face ran
+through the engine's queue/voice-load latency (hundreds of ms) before any
+audio. Even a frozen clock would not have been enough: the first word started
+at 0ms, so position 0 + 50ms lead already showed its first sound.
+
+**Rejected.** A fixed startup delay (latency varies per voice and per call).
+Removing or changing VISUAL_LEAD_MS (it is not the cause; judged separately).
+Guarding in LipSyncPlayer (kept inside the Web Speech layer).
+
+---
+
+## 2026-09-13 — Onboarding captures all eleven poses in one run
+
+**Decision.** First-time capture is one continuous sequence of all eleven poses
+(`ONBOARDING_POSES`, "Photo N of 11"), straight into preview. The post-core
+"Your talking face is ready! / Add Extra Lip Shapes" decision card is gone.
+`CORE_POSES`/`EXTENDED_POSES` stay as data-model tiers: storage, baking and the
+renderer still accept any subset containing REST, existing avatars load
+unchanged, and Settings → "Improve lip sync" still captures only the poses an
+older avatar is missing. Capture now shows a title and an instruction per pose
+plus a standing "keep your head still" hint. After three consecutive
+quality-gate rejections on one pose (never REST) a quiet "Skip this photo" link
+appears; the gate itself is unchanged.
+
+**Why.** Offering the extended poses as a bonus after "ready!" meant most
+avatars would never get them, and the extended poses (TH, TEETH_LIP, SH_CH, L,
+OPEN_ROUND) are exactly the ones the renderer otherwise has to approximate.
+The earlier rationale (eleven photos is long; bad TH frames look worse than an
+approximation) is answered by the skip escape rather than by making the poses
+opt-in.
+
+**Rejected.** Making all eleven structurally required in storage/rendering
+(would break older avatars and force recapture). Removing the upgrade path
+(older avatars still need it). A skip button on every step (makes skipping the
+easy path).

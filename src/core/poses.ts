@@ -19,18 +19,16 @@ export type MouthPose =
   | 'L';
 
 /**
- * Capture order. REST first because every other pose is aligned against it.
+ * Pose tiers. REST first because every other pose is aligned against it.
  *
- * The set is split into a required core and an optional extended tier. Eleven
- * mandatory photographs is a long way to ask a first-time user (a child,
- * often) to walk before they see anything work, and the extended poses are
- * also the hardest to photograph well -- a bad TH frame looks worse than a
- * principled approximation of one. The core alone is a working avatar; the
- * extended poses are an opt-in upgrade, and any of them may be absent.
+ * The core/extended split describes the DATA MODEL, not the onboarding UX. The
+ * core alone renders a working avatar, and any extended pose may be absent: a
+ * legacy five-pose avatar, an avatar saved before onboarding asked for all
+ * eleven, or a photo skipped after repeated quality failures. Storage and the
+ * renderer must keep tolerating that.
  *
- * This is the same mechanism that carries a legacy five-pose avatar forward,
- * so it costs nothing extra: an old avatar is simply an eleven-pose avatar
- * with most of the set missing.
+ * First-time onboarding nevertheless asks for every pose in one run -- see
+ * ONBOARDING_POSES.
  */
 export const CORE_POSES: readonly MouthPose[] = [
   'REST', 'CLOSED', 'SMALL_OPEN', 'BIG_OPEN', 'WIDE', 'ROUND',
@@ -41,6 +39,12 @@ export const EXTENDED_POSES: readonly MouthPose[] = [
 ];
 
 export const ALL_POSES: readonly MouthPose[] = [...CORE_POSES, ...EXTENDED_POSES];
+
+/**
+ * First-time capture sequence: all eleven poses as one continuous run, then
+ * preview. Required by the onboarding UX only, never by storage or rendering.
+ */
+export const ONBOARDING_POSES: readonly MouthPose[] = ALL_POSES;
 
 /** Poses the user photographs. REST is the neutral selfie, captured separately. */
 export const CAPTURE_POSES: readonly MouthPose[] = ALL_POSES.filter((pose) => pose !== 'REST');
@@ -61,15 +65,16 @@ export interface PoseCapturePrompt {
 }
 
 export const POSE_PROMPTS: Readonly<Record<MouthPose, PoseCapturePrompt>> = {
-  REST:       { title: 'Relax',      instruction: 'Look straight at the camera and relax your mouth.' },
-  CLOSED:     { title: 'Mmm',        instruction: 'Close your lips like you\u2019re saying MMM.' },
-  SMALL_OPEN: { title: 'Just a bit', instruction: 'Relax your mouth and open it just a little.' },
-  BIG_OPEN:   { title: 'Ahh',        instruction: 'Open your mouth like you\u2019re saying AHH.' },
-  WIDE:       { title: 'Eee',        instruction: 'Smile slightly and say EEE.' },
-  ROUND:      { title: 'Ooo',        instruction: 'Round your lips like you\u2019re saying OOO.' },
-  OPEN_ROUND: { title: 'Oh',         instruction: 'Say OH, with your lips round and open.' },
-  TEETH_LIP:  { title: 'Fff',        instruction: 'Rest your top teeth gently on your bottom lip, like FFF.' },
-  TH:         { title: 'Th',         instruction: 'Peek your tongue just between your teeth, like TH.' },
-  SH_CH:      { title: 'Shh',        instruction: 'Push your lips forward a little and say SHHH.' },
-  L:          { title: 'Lll',        instruction: 'Say LLL with your tongue behind your top teeth.' },
+  REST:       { title: 'Relax your face', instruction: 'Look straight ahead and keep your mouth relaxed.' },
+  CLOSED:     { title: 'Say MMM',         instruction: 'Press your lips together naturally.' },
+  SMALL_OPEN: { title: 'Open a little',   instruction: 'Relax your jaw and open your mouth slightly.' },
+  BIG_OPEN:   { title: 'Say AHH',         instruction: 'Open your mouth comfortably wide.' },
+  WIDE:       { title: 'Say EEE',         instruction: 'Stretch your lips wide like a smile.' },
+  ROUND:      { title: 'Say OOO',         instruction: 'Round your lips forward.' },
+  OPEN_ROUND: { title: 'Say OH',          instruction: 'Round your lips while keeping your mouth open.' },
+  TEETH_LIP:  { title: 'Say FFF',         instruction: 'Touch your top teeth gently to your lower lip.' },
+  TH:         { title: 'Say TH',          instruction: 'Place your tongue lightly between your teeth.' },
+  SH_CH:      { title: 'Say SH',          instruction: 'Bring your lips slightly forward, like saying \u201csh.\u201d' },
+  // Open slightly: with the lips closed the tongue (the whole point of L) is hidden.
+  L:          { title: 'Say LLL',         instruction: 'Open slightly and lift your tongue tip behind your top teeth.' },
 };

@@ -21,7 +21,7 @@ export class WelcomeScreen implements Screen {
 
     const copy = document.createElement('p');
     copy.className = 'hint welcome-copy';
-    copy.textContent = 'Take five quick photos, then type anything you want your face to say.';
+    copy.textContent = 'Take 11 quick photos of different mouth shapes, then type anything you want your face to say.';
 
     const start = document.createElement('button');
     start.className = 'btn btn--block welcome-start';

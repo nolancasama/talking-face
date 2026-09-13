@@ -25,7 +25,9 @@ working PWA (43kB app + 126kB MediaPipe, ~176KB precached shell).
   a Web Speech fallback. `src/core/timeline.ts` builds gapless merged timelines.
 - **Playback** — `src/player/` : `PlaybackClock` implementations and
   `LipSyncPlayer`, which derives mouth state from playback position every frame.
-- **UI** — `src/ui/screens/` : welcome, five capture steps, preview with Adjust,
+- **UI** — `src/ui/screens/` : welcome, one eleven-photo capture run
+  (`ONBOARDING_POSES`, skip offered after 3 quality failures; uncommitted),
+  preview with Adjust,
   talk screen, settings.
 - **Storage** — `src/store/avatarStore.ts` : IndexedDB, one avatar, no account.
 - **Assets** — `npm run setup:models` vendors the landmark model and WASM into
@@ -79,6 +81,10 @@ Also unverified on a device: camera capture flow, the quality-gate thresholds
    `WORD: One` → `PUNCTUATION HOLD (.) … waiting for "Two"` → `WORD: Two`.
    If the row never shows WORD, the voice sends no boundary events (common on
    Android) and only the estimated REST slot applies.
+   **Startup gating (uncommitted):** the clock now waits for `onstart`. On
+   "Hello." the row should read `WAITING FOR SPEECH START · …ms` with the face
+   at REST until the voice is audible. If it ever reads `STARTED via fallback`,
+   that voice does not fire onstart — note which one.
 
 ## Codex / delegated work
 
