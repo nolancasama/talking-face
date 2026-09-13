@@ -2,9 +2,9 @@ import type { FaceLandmarks, Point } from '../core/types';
 import type { ImageSource, NormalizedLandmark } from '@mediapipe/tasks-vision';
 
 // Supply public/models/face_landmarker.task; it is intentionally not downloaded at runtime.
-const MODEL_PATH = '/models/face_landmarker.task';
+const MODEL_PATH = `${import.meta.env.BASE_URL}models/face_landmarker.task`;
 // Copy the @mediapipe/tasks-vision WASM distribution into public/models/wasm.
-const WASM_PATH = '/models/wasm';
+const WASM_PATH = `${import.meta.env.BASE_URL}models/wasm`;
 
 /** MediaPipe Face Mesh indices, in the frozen contract's conventional order. */
 export const RIGID_MESH_INDICES = [

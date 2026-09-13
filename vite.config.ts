@@ -1,7 +1,11 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// GitHub Pages serves this project at /talking-face/, not the domain root.
+const base = process.env.GITHUB_PAGES ? '/talking-face/' : '/';
+
 export default defineConfig({
+  base,
   server: { host: true },
   plugins: [
     VitePWA({
@@ -15,11 +19,12 @@ export default defineConfig({
         background_color: '#0e1116',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
+        start_url: base,
+        scope: base,
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: `${base}icons/icon-192.png`, sizes: '192x192', type: 'image/png' },
+          { src: `${base}icons/icon-512.png`, sizes: '512x512', type: 'image/png' },
+          { src: `${base}icons/icon-512.png`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
@@ -34,7 +39,7 @@ export default defineConfig({
         globIgnores: ['**/models/**'],
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.pathname.startsWith('/models/'),
+            urlPattern: ({ url }) => url.pathname.startsWith(`${base}models/`),
             handler: 'CacheFirst',
             options: {
               cacheName: 'face-models',
