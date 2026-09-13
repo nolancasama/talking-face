@@ -6,7 +6,7 @@ import type {
   TTSProvider,
   Voice,
 } from '../core/types';
-import { WebSpeechTimingClock, barrierGapMs, classifyGap } from './webSpeechTiming';
+import { START_REST_MS, WebSpeechTimingClock, barrierGapMs, classifyGap } from './webSpeechTiming';
 import type { WordTiming } from './webSpeechTiming';
 
 const LABELS = ['Female 1', 'Female 2', 'Male 1', 'Male 2'] as const;
@@ -97,7 +97,8 @@ export function estimate(text: string, speed: number): { cues: SpeechCue[]; word
   const matches = [...text.matchAll(/[\p{L}\p{N}']+/gu)];
   const cues: SpeechCue[] = [];
   const words: WordTiming[] = [];
-  let cursor = 0;
+  // REST before the first word, so a clock waiting at 0 renders REST.
+  let cursor = START_REST_MS;
 
   for (const [wordIndex, match] of matches.entries()) {
     const previous = words[wordIndex - 1];
@@ -169,6 +170,9 @@ class SpeechSynthesisPlayback implements ExternalPlayback {
     const utterance = new SpeechSynthesisUtterance(this.text);
     utterance.rate = Math.max(0.1, Math.min(10, this.speed));
     utterance.voice = browserVoices().find((voice) => voice.voiceURI === this.voiceId) ?? null;
+    // The clock epoch is when the engine starts speaking, not when speak() is
+    // called: queueing and voice loading can take hundreds of milliseconds.
+    utterance.onstart = () => this.clock.speechStarted();
     utterance.onboundary = (event) => this.clock.boundary(event.charIndex, event.name);
     utterance.onend = () => this.finish();
     utterance.onerror = () => this.finish();
@@ -178,6 +182,7 @@ class SpeechSynthesisPlayback implements ExternalPlayback {
 
   stop(): void {
     if (!this.utterance || this.ended) return;
+    this.utterance.onstart = null;
     this.utterance.onboundary = null;
     this.utterance.onend = null;
     this.utterance.onerror = null;

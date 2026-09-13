@@ -67,6 +67,12 @@ export function describeTiming(timing: PlaybackTimingDebug): string {
     const kind = timing.hold.barrier === 'hard' ? 'PUNCTUATION HOLD' : 'SOFT HOLD';
     return `${kind} (${timing.hold.punctuation}) ${timing.hold.heldMs.toFixed(0)}ms · waiting for “${timing.hold.nextWord}”`;
   }
+  if (timing.phase === 'waiting') {
+    return `WAITING FOR SPEECH START · ${(timing.sinceRequestMs ?? 0).toFixed(0)}ms`;
+  }
+  if (timing.phase === 'estimating') {
+    return `STARTED via ${timing.startedVia ?? '?'} after ${(timing.startLatencyMs ?? 0).toFixed(0)}ms · no boundary yet`;
+  }
   if (timing.phase === 'word') return `WORD: ${timing.word ?? '?'} @${timing.charIndex ?? '?'}`;
   return timing.phase.toUpperCase();
 }

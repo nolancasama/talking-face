@@ -45,6 +45,23 @@ export const HARD_HOLD_MAX_MS = 2000;
 /** A comma never holds indefinitely; past this the estimate resumes. */
 export const SOFT_HOLD_MAX_MS = 400;
 
+/**
+ * REST lead-in before the first word in the estimated timeline. Without it the
+ * first word starts at 0 and the player's VISUAL_LEAD_MS lookahead shows its
+ * first sound while the clock is still waiting for speech to start. Sized from
+ * the lead (and kept past MIN_SPAN_MS so the timeline cannot absorb it), not a
+ * delay: the first boundary re-anchors straight to the word regardless.
+ */
+export const START_REST_MS = Math.max(MIN_SPAN_MS, VISUAL_LEAD_MS) + 1;
+
+/**
+ * Safety start if the engine never reports speech starting (no onstart and no
+ * boundary). Deliberately long: real start latency is usually well under a
+ * second, and starting early is the bug this guards against. A late onstart
+ * still corrects a fallback start.
+ */
+export const START_FALLBACK_MS = 2000;
+
 /** Pace estimates outside this range are treated as bad samples, not a voice. */
 const PACE_MIN = 0.25;
 const PACE_MAX = 4;
@@ -90,7 +107,15 @@ interface Hold {
  * sentence during a real pause. The utterance itself is never delayed.
  */
 export class WebSpeechTimingClock {
+  /** speak() requested (waiting or started). */
   private running = false;
+  /** The engine has actually begun speaking; the clock epoch is set. */
+  private started = false;
+  private startedVia: 'onstart' | 'boundary' | 'fallback' | null = null;
+  private startLatencyMs: number | null = null;
+  private requestedAtMs = 0;
+  /** Start of the current unpaused wait, for the fallback timer. */
+  private waitFromMs = 0;
   private paused = false;
   private ended = false;
   private anchorWallMs = 0;
@@ -109,11 +134,18 @@ export class WebSpeechTimingClock {
     private readonly now: () => number = () => performance.now(),
   ) {}
 
+  /** speak() was requested. The clock holds at 0 until speech actually starts. */
   start(): void {
+    const now = this.now();
     this.running = true;
+    this.started = false;
+    this.startedVia = null;
+    this.startLatencyMs = null;
+    this.requestedAtMs = now;
+    this.waitFromMs = now;
     this.paused = false;
     this.ended = false;
-    this.anchorWallMs = this.now();
+    this.anchorWallMs = now;
     this.anchorSpeechMs = 0;
     this.anchorWordIndex = -1;
     this.lastCharIndex = null;
@@ -122,8 +154,23 @@ export class WebSpeechTimingClock {
     this.lastWordEventIndex = -1;
   }
 
+  /**
+   * The engine reports speech has begun (utterance.onstart): the clock epoch.
+   * Ignored once a boundary has anchored the clock, so it can never move the
+   * clock backwards; it does correct a fallback start that guessed too early.
+   */
+  speechStarted(): void {
+    if (!this.running || this.ended) return;
+    const now = this.now();
+    this.settleStart(now);
+    if (this.started && !(this.startedVia === 'fallback' && this.anchorWordIndex < 0)) return;
+    this.started = false;
+    this.beginAt(now, 'onstart');
+  }
+
   stop(): void {
     this.running = false;
+    this.started = false;
     this.paused = false;
     this.ended = false;
     this.anchorSpeechMs = 0;
@@ -140,6 +187,8 @@ export class WebSpeechTimingClock {
   resume(): void {
     if (!this.running || !this.paused || this.ended) return;
     this.anchorWallMs = this.now();
+    // Time spent paused before start must not count toward the fallback.
+    if (!this.started) this.waitFromMs = this.anchorWallMs;
     this.paused = false;
   }
 
@@ -162,6 +211,10 @@ export class WebSpeechTimingClock {
     if (this.anchorWordIndex >= 0 && index <= this.anchorWordIndex) return;
 
     const now = this.now();
+    // A word boundary proves speech has started, even if onstart has not
+    // arrived yet (or never will). The anchor below then places the clock.
+    this.settleStart(now);
+    if (!this.started) this.beginAt(now, 'boundary');
     const word = this.words[index]!;
     const isWordEvent = name === undefined || name === '' || name === 'word';
 
@@ -188,13 +241,18 @@ export class WebSpeechTimingClock {
   positionMs(): number {
     if (this.ended) return this.durationMs;
     if (!this.running) return 0;
+    const now = this.now();
+    this.settleStart(now);
+    if (!this.started) return 0;
     if (this.paused) return this.anchorSpeechMs;
-    return this.clamp(this.resolve(this.now()).positionMs);
+    return this.clamp(this.resolve(now).positionMs);
   }
 
   debugState(): PlaybackTimingDebug {
     const now = this.now();
-    const resolved = this.running && !this.paused && !this.ended
+    this.settleStart(now);
+    const advancing = this.running && this.started && !this.paused && !this.ended;
+    const resolved = advancing
       ? this.resolve(now)
       : { positionMs: this.positionMs(), hold: null };
     const word = this.words[this.anchorWordIndex];
@@ -204,16 +262,22 @@ export class WebSpeechTimingClock {
       phase: this.ended ? 'ended'
         : !this.running ? 'idle'
         : this.paused ? 'paused'
+        : !this.started ? 'waiting'
         : resolved.hold ? 'hold'
         : this.anchorWordIndex < 0 ? 'estimating'
         : 'word',
       word: word?.text ?? null,
       charIndex: this.lastCharIndex,
       anchorMs: this.anchorSpeechMs,
-      estimatedMs: this.clamp(this.anchorSpeechMs + (now - this.anchorWallMs) * this.paceScale),
+      estimatedMs: advancing
+        ? this.clamp(this.anchorSpeechMs + (now - this.anchorWallMs) * this.paceScale)
+        : resolved.positionMs,
       positionMs: this.clamp(resolved.positionMs),
       paceScale: this.paceScale,
       paceSamples: this.paceSamples,
+      startedVia: this.startedVia,
+      startLatencyMs: this.startLatencyMs,
+      sinceRequestMs: this.running ? now - this.requestedAtMs : null,
       hold: resolved.hold && holdWord
         ? {
           barrier: holdWord.barrier,
@@ -258,6 +322,24 @@ export class WebSpeechTimingClock {
       }
     }
     return { positionMs: speechMs + (now - wallMs) * this.paceScale, hold: null };
+  }
+
+  /** Set the clock epoch: position 0 at wall time `atMs`. */
+  private beginAt(atMs: number, via: 'onstart' | 'boundary' | 'fallback'): void {
+    if (this.started) return;
+    this.started = true;
+    this.startedVia = via;
+    this.startLatencyMs = atMs - this.requestedAtMs;
+    this.anchorSpeechMs = 0;
+    this.anchorWallMs = atMs;
+  }
+
+  /** Apply the missing-onstart safety start once its (unpaused) wait expires. */
+  private settleStart(now: number): void {
+    if (this.running && !this.started && !this.paused && !this.ended
+      && now - this.waitFromMs > START_FALLBACK_MS) {
+      this.beginAt(this.waitFromMs + START_FALLBACK_MS, 'fallback');
+    }
   }
 
   private learnPace(observed: number): void {

@@ -223,7 +223,13 @@ export type PunctuationBarrier = 'none' | 'soft' | 'hard';
 /** Read-only clock diagnostics, so timing faults can be told apart from mapping faults. */
 export interface PlaybackTimingDebug {
   readonly source: string;
-  readonly phase: 'idle' | 'estimating' | 'word' | 'hold' | 'paused' | 'ended';
+  readonly phase: 'idle' | 'waiting' | 'estimating' | 'word' | 'hold' | 'paused' | 'ended';
+  /** What established the clock epoch: the engine's start event, an early boundary, or the safety fallback. */
+  readonly startedVia: 'onstart' | 'boundary' | 'fallback' | null;
+  /** Wall ms from speak() being requested to the epoch. */
+  readonly startLatencyMs: number | null;
+  /** Wall ms since speak() was requested. */
+  readonly sinceRequestMs: number | null;
   /** Word of the latest accepted boundary event. */
   readonly word: string | null;
   readonly charIndex: number | null;
