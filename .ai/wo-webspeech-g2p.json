@@ -1,0 +1,34 @@
+{
+  "task": "Improve the Web Speech text-to-phoneme estimator in src/tts/webspeech.ts so it emits more accurate ARPAbet phoneme symbols (with stress digits where known), and stop the last ~120ms of every estimated utterance being clipped to REST.",
+  "requirements": [
+    "BUG: estimate() returns durationMs equal to the end of the last word, but buildTimeline/buildArticulationTrack reserve TRAILING_REST_MS (src/core/visemeMap.ts, 120ms) INSIDE durationMs, so the final 120ms of speech is overwritten by REST (e.g. 'map' loses its vowel and P; 'too' keeps only 16ms of UW). Fix by making estimate() add TRAILING_REST_MS after the last word to durationMs. Word startMs/endMs and cue times must not move. Confirm src/tts/webSpeechTiming.test.ts still passes; if a test there asserts the old durationMs, update it and say why.",
+    "phonemeGroups(word) must return ARPAbet symbols from the set used in src/core/phonemeArticulation.ts PHONEME_PROFILES (AA AE AH AX EH ER IH IY UH UW AO AY AW EY OW OY P B M F V TH DH T D N S Z SH ZH CH JH K G NG HH L R W Y). A vowel symbol MAY carry a stress digit (e.g. 'AH0', 'IY1'); parsePhoneme() in that file already parses digits and maps AH0 to schwa. Do not emit symbols outside that set.",
+    "groupWeight()/VOWEL_GROUPS must treat stressed symbols ('AH0', 'IY1') as vowels (strip digits before the lookup).",
+    "Collapse doubled consonant letters to one phoneme (shopping -> one P, mall -> one L, funny -> one N). CK -> K. WH -> W. QU -> K W. PH -> F. C before E/I/Y -> S, otherwise K.",
+    "Silent final E: a word-final E after a consonant is silent when the word has an earlier vowel (five, name, made, like, apple -> no final vowel), and it makes the preceding single vowel long (magic e): A_E -> EY, I_E -> AY, O_E -> OW, U_E -> UW, E_E -> IY.",
+    "Vowel digraphs/trigrams: IGH -> AY (night), EE/EA -> IY, AI/AY -> EY, OA -> OW, OO -> UW, EW -> UW, UE -> UW, OI/OY -> OY, OU -> AW, OW -> OW, word-final IE -> AY (pie). ER/IR/UR -> ER; AR -> AA R; OR -> AO R; ALL -> AO L (mall, ball). Y: word-initial Y -> Y; word-final Y after a consonant -> AY when Y is the word's only vowel letter (my, by, fly, shy), otherwise IY (funny, very).",
+    "A small exception lexicon (lower-case whole-word lookup before the rules) for frequent irregular and function words, with stress digit 0 on reduced function-word vowels: a -> AH0; the -> DH AH0; to -> T UW0; of -> AH0 V; is -> IH0 Z; was -> W AH0 Z; are -> AA0 R; you -> Y UW1; your -> Y AO1 R; do -> D UW1; one -> W AH1 N; come -> K AH1 M; some -> S AH1 M; have -> HH AE1 V; said -> S EH1 D; this -> DH IH1 S; that -> DH AE1 T; they -> DH EY1; them -> DH EH1 M; there -> DH EH1 R; then -> DH EH1 N; these -> DH IY1 Z; those -> DH OW1 Z; with -> W IH1 TH; what -> W AH1 T; many -> M EH1 N IY0; very -> V EH1 R IY0; good -> G UH1 D; mom -> M AA1 M; me -> M IY1; we -> W IY1; he -> HH IY1; she -> SH IY1; be -> B IY1; my -> M AY1; I -> AY1; going -> G OW1 IH0 NG; about -> AH0 B AW1 T; blue -> B L UW1; shoes -> SH UW1 Z; apple -> AE1 P AH0 L; balloons -> B AH0 L UW1 N Z; can -> K AE1 N; and -> AE0 N D; for -> F AO0 R; or -> AO0 R. Keep it compact; it is a frequency list, not a dictionary.",
+    "Unit tests in src/tts/webspeech.test.ts (new file) covering: the trailing-rest fix (durationMs = last word end + TRAILING_REST_MS; last cue endMs unchanged); and phonemeGroups (export it if needed) for at least: five -> F AY V; name -> N EY M; shopping -> SH AA P IH NG (one P) or equivalent AO; mall -> M AO L; too -> T UW; moon -> M UW N; see -> S IY; you -> Y UW1; night -> N AY T; funny -> F AH N IY; think -> TH IH NG K; chair -> CH EH R (or CH AI -> EY R, state which); the -> DH AH0. Where a rule gives a defensible alternative, assert what the implementation produces and note it in the summary.",
+    "Record the decision in DESIGN_DECISIONS.md as one short dated entry (2026-09-14): lexicon + rule estimator, stress digits on function words, trailing rest now appended inside the estimate."
+  ],
+  "constraints": [
+    "Edit only src/tts/webspeech.ts, the new src/tts/webspeech.test.ts, DESIGN_DECISIONS.md, and src/tts/webSpeechTiming.test.ts only if the duration change genuinely requires it.",
+    "Do NOT touch src/core/**, src/player/**, src/ui/**: the articulation engine there is new, uncommitted, intentional work by another agent. The working tree is dirty on purpose; do not revert, format, or commit anything.",
+    "Do not change punctuation barrier handling, WebSpeechTimingClock, START_REST_MS, inter-word gaps, BASE_CHARACTER_MS, or the vowel/consonant duration weighting values.",
+    "No new dependencies. No pronunciation dictionary files. Rule-based and compact.",
+    "Do not commit."
+  ],
+  "startingPoints": [
+    "src/tts/webspeech.ts",
+    "src/core/phonemeArticulation.ts",
+    "src/core/visemeMap.ts",
+    "src/tts/webSpeechTiming.test.ts"
+  ],
+  "validation": ["npm test", "npm run typecheck"],
+  "category": "logic",
+  "complexity": "medium",
+  "bounded": true,
+  "exploration": "local",
+  "risk": "low",
+  "expectedCost": "medium"
+}

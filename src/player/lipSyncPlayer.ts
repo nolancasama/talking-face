@@ -4,7 +4,9 @@ import {
   smoothArticulation,
 } from '../core/articulation';
 import type { Articulation } from '../core/articulation';
-import { articulationAt, mouthAt } from '../core/timeline';
+import { coarticulate, describeCoarticulation } from '../core/coarticulation';
+import type { ArticulationTrack, CoarticulationDebug } from '../core/coarticulation';
+import { mouthAt } from '../core/timeline';
 import { ALL_POSES } from '../core/types';
 import type { Avatar, MouthPose, MouthTimeline, PlaybackClock } from '../core/types';
 
@@ -19,6 +21,8 @@ export interface LipSyncPlayerSnapshot {
   readonly visualTimeMs: number;
   readonly activeMouthState: MouthPose;
   readonly availablePoses: readonly MouthPose[];
+  /** The linguistic decision behind targetArticulation at visualTimeMs. */
+  readonly speech: CoarticulationDebug | null;
 }
 
 /** Renders pre-baked avatar frames against a playback-position master clock. */
@@ -41,6 +45,7 @@ export class LipSyncPlayer {
     private readonly canvas: HTMLCanvasElement,
     private readonly timeline: MouthTimeline,
     private readonly clock: PausableClock,
+    private readonly track: ArticulationTrack,
   ) {
     const context = canvas.getContext('2d');
     if (!context) throw new Error('A 2D canvas context is required for lip-sync playback');
@@ -96,6 +101,8 @@ export class LipSyncPlayer {
       visualTimeMs: this.visualTimeMs,
       activeMouthState: this.activeMouthState,
       availablePoses: [...this.availablePoses],
+      // Debug-only, so computed on demand rather than every frame.
+      speech: describeCoarticulation(this.track, this.visualTimeMs),
     };
   }
 
@@ -117,7 +124,7 @@ export class LipSyncPlayer {
     }
 
     const visualTimeMs = clockPositionMs + VISUAL_LEAD_MS;
-    const targetArticulation = articulationAt(this.timeline, visualTimeMs);
+    const targetArticulation = coarticulate(this.track, visualTimeMs);
     const elapsedMs = this.lastRenderedAtMs === null
       ? 0
       : Math.max(0, renderedAtMs - this.lastRenderedAtMs);
@@ -144,7 +151,7 @@ export class LipSyncPlayer {
 
   private resetSmoothing(clockPositionMs: number, renderedAtMs: number): void {
     const visualTimeMs = clockPositionMs + VISUAL_LEAD_MS;
-    const targetArticulation = articulationAt(this.timeline, visualTimeMs);
+    const targetArticulation = coarticulate(this.track, visualTimeMs);
     this.currentArticulation = { ...targetArticulation };
     this.targetArticulation = targetArticulation;
     this.currentPoseWeights = resolvePoseWeights(this.currentArticulation, this.availablePoses);

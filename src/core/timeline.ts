@@ -1,11 +1,7 @@
-import {
-  FRAME_CROSSFADE_MS,
-  POSE_ARTICULATION,
-  PROTECTED_POSES,
-  commitmentFor,
-  mixArticulation,
-} from './articulation';
-import type { Articulation } from './articulation';
+// The discrete pose timeline: which captured reference is nearest each span.
+// It drives the debug pose strip and mouthAt(); the rendered articulation comes
+// from the coarticulated track in coarticulation.ts.
+import { PROTECTED_POSES } from './articulation';
 import { MIN_SPAN_MS, TRAILING_REST_MS } from './visemeMap';
 import { mapSpeechToken } from './visemeMapper';
 import type { MouthPose, MouthSpan, MouthTimeline, SpeechCue } from './types';
@@ -116,43 +112,4 @@ export function mouthAt(timeline: MouthTimeline, ms: number): MouthPose {
   }
 
   return last.mouth;
-}
-
-/**
- * Resolve the timeline's target articulation at a playback position.
- *
- * Each span commits from the previous span's effective endpoint rather than
- * from its baked reference pose. Real boundaries then blend toward that
- * endpoint over the short photographic-frame crossfade window.
- */
-export function articulationAt(timeline: MouthTimeline, ms: number): Articulation {
-  if (timeline.length === 0 || !Number.isFinite(ms)) {
-    return { ...POSE_ARTICULATION.REST };
-  }
-
-  let previous = POSE_ARTICULATION.REST;
-  for (let index = 0; index < timeline.length; index += 1) {
-    const span = timeline[index]!;
-    const committed = mixArticulation(
-      previous,
-      POSE_ARTICULATION[span.mouth],
-      commitmentFor(span.mouth, spanDuration(span)),
-    );
-
-    if (ms < span.endMs || index === timeline.length - 1) {
-      // The first span has no real incoming boundary. Resolving it immediately
-      // also lets a reset at position zero start at the correct articulation.
-      if (index === 0 || ms >= span.startMs + FRAME_CROSSFADE_MS) {
-        return committed;
-      }
-
-      const transitionDuration = Math.min(FRAME_CROSSFADE_MS, spanDuration(span));
-      if (!(transitionDuration > 0)) return committed;
-      return mixArticulation(previous, committed, (ms - span.startMs) / transitionDuration);
-    }
-
-    previous = committed;
-  }
-
-  return { ...previous };
 }

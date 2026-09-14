@@ -6,6 +6,7 @@ import type {
   TTSProvider,
   Voice,
 } from '../core/types';
+import { TRAILING_REST_MS } from '../core/visemeMap';
 import { START_REST_MS, WebSpeechTimingClock, barrierGapMs, classifyGap } from './webSpeechTiming';
 import type { WordTiming } from './webSpeechTiming';
 
@@ -36,33 +37,127 @@ function friendlyVoices(): Voice[] {
  *  vowel groups a proportionally longer slice of the word's duration, so the
  *  states that are not OPEN survive long enough to actually be seen. */
 const VOWEL_GROUPS = new Set([
-  'AE', 'EH', 'IH', 'AO', 'UH', 'IY', 'EY', 'OY', 'AW', 'UW', 'AA', 'AH', 'AY', 'OW',
+  'AA', 'AE', 'AH', 'AX', 'EH', 'ER', 'IH', 'IY', 'UH', 'UW', 'AO', 'AY', 'AW', 'EY', 'OW', 'OY',
 ]);
 
-function phonemeGroups(word: string): string[] {
+const EXCEPTION_PHONEMES: Readonly<Record<string, readonly string[]>> = {
+  a: ['AH0'], the: ['DH', 'AH0'], to: ['T', 'UW0'], of: ['AH0', 'V'], is: ['IH0', 'Z'],
+  was: ['W', 'AH0', 'Z'], are: ['AA0', 'R'], you: ['Y', 'UW1'], your: ['Y', 'AO1', 'R'],
+  do: ['D', 'UW1'], one: ['W', 'AH1', 'N'], come: ['K', 'AH1', 'M'], some: ['S', 'AH1', 'M'],
+  have: ['HH', 'AE1', 'V'], said: ['S', 'EH1', 'D'], this: ['DH', 'IH1', 'S'],
+  that: ['DH', 'AE1', 'T'], they: ['DH', 'EY1'], them: ['DH', 'EH1', 'M'],
+  there: ['DH', 'EH1', 'R'], then: ['DH', 'EH1', 'N'], these: ['DH', 'IY1', 'Z'],
+  those: ['DH', 'OW1', 'Z'], with: ['W', 'IH1', 'TH'], what: ['W', 'AH1', 'T'],
+  many: ['M', 'EH1', 'N', 'IY0'], very: ['V', 'EH1', 'R', 'IY0'], good: ['G', 'UH1', 'D'],
+  mom: ['M', 'AA1', 'M'], me: ['M', 'IY1'], we: ['W', 'IY1'], he: ['HH', 'IY1'],
+  she: ['SH', 'IY1'], be: ['B', 'IY1'], my: ['M', 'AY1'], i: ['AY1'],
+  going: ['G', 'OW1', 'IH0', 'NG'], about: ['AH0', 'B', 'AW1', 'T'],
+  blue: ['B', 'L', 'UW1'], shoes: ['SH', 'UW1', 'Z'], apple: ['AE1', 'P', 'AH0', 'L'],
+  balloons: ['B', 'AH0', 'L', 'UW1', 'N', 'Z'], can: ['K', 'AE1', 'N'],
+  and: ['AE0', 'N', 'D'], for: ['F', 'AO0', 'R'], or: ['AO0', 'R'],
+};
+
+const VOWEL_LETTERS = new Set(['A', 'E', 'I', 'O', 'U', 'Y']);
+const SINGLE_VOWELS: Readonly<Record<string, string>> = {
+  A: 'AE', E: 'EH', I: 'IH', O: 'AA', U: 'AH',
+};
+const LONG_VOWELS: Readonly<Record<string, string>> = {
+  A: 'EY', E: 'IY', I: 'AY', O: 'OW', U: 'UW',
+};
+const VOWEL_PATTERNS: Readonly<Record<string, readonly string[]>> = {
+  EE: ['IY'], EA: ['IY'], AI: ['EY'], AY: ['EY'], OA: ['OW'], OO: ['UW'],
+  EW: ['UW'], UE: ['UW'], OI: ['OY'], OY: ['OY'], OU: ['AW'], OW: ['OW'],
+  ER: ['ER'], IR: ['ER'], UR: ['ER'], AR: ['AA', 'R'], OR: ['AO', 'R'],
+};
+const CONSONANTS: Readonly<Record<string, readonly string[]>> = {
+  B: ['B'], D: ['D'], F: ['F'], G: ['G'], H: ['HH'], J: ['JH'], K: ['K'], L: ['L'],
+  M: ['M'], N: ['N'], P: ['P'], Q: ['K'], R: ['R'], S: ['S'], T: ['T'], V: ['V'],
+  W: ['W'], X: ['K', 'S'], Z: ['Z'],
+};
+
+/** A compact spelling-to-ARPAbet fallback, used only when Web Speech cannot
+ * provide phoneme timing. Whole-word exceptions cover common irregular words;
+ * the rules deliberately emit only symbols understood by PHONEME_PROFILES. */
+export function phonemeGroups(word: string): string[] {
+  const exception = EXCEPTION_PHONEMES[word.toLocaleLowerCase('en-US')];
+  if (exception) return [...exception];
+
   const groups: string[] = [];
-  const upper = word.toUpperCase();
-  const patterns = ['TH', 'SH', 'CH', 'PH', 'NG', 'OO', 'OW', 'OU', 'OI', 'OY', 'EE', 'EA', 'AI', 'AY'];
+  const upper = word.toUpperCase().replace(/[^A-Z]/g, '');
+  const finalEIsSilent = upper.endsWith('E')
+    && upper.length > 2
+    && !VOWEL_LETTERS.has(upper.at(-2) ?? '')
+    && [...upper.slice(0, -1)].some((letter) => VOWEL_LETTERS.has(letter));
+  const magicEIndex = finalEIsSilent
+    && LONG_VOWELS[upper.at(-3) ?? '']
+    && !VOWEL_LETTERS.has(upper.at(-2) ?? '')
+    ? upper.length - 3
+    : -1;
+
   for (let index = 0; index < upper.length;) {
-    const pair = upper.slice(index, index + 2);
-    if (patterns.includes(pair)) {
-      groups.push(pair === 'PH' ? 'F' : pair === 'OO' ? 'UW' : pair === 'OU' ? 'AW' : pair === 'OI' ? 'OY' : pair === 'EE' || pair === 'EA' ? 'IY' : pair === 'AI' ? 'EY' : pair);
-      index += 2;
-    } else {
-      const letter = upper[index];
-      if (letter && /[A-Z]/.test(letter)) {
-        // Approximate ARPAbet symbols for letters whose table lookup would
-        // otherwise miss (bare letters not present as PHONEME_TO_MOUTH keys)
-        // or would be phonetically wrong on their own.
-        const approximations: Readonly<Record<string, string>> = {
-          A: 'AE', E: 'EH', I: 'IH', O: 'AO', U: 'UH', C: 'K', Q: 'K', X: 'K', J: 'JH', H: 'HH',
-        };
-        groups.push(approximations[letter] ?? letter);
-      }
+    if (finalEIsSilent && index === upper.length - 1) break;
+    if (index === magicEIndex) {
+      groups.push(LONG_VOWELS[upper[index]!]!);
       index += 1;
+      continue;
     }
+
+    const trigram = upper.slice(index, index + 3);
+    if (trigram === 'IGH') {
+      groups.push('AY');
+      index += 3;
+      continue;
+    }
+    if (trigram === 'ALL') {
+      groups.push('AO', 'L');
+      index += 3;
+      continue;
+    }
+
+    const pair = upper.slice(index, index + 2);
+    if (pair === 'IE' && index + 2 === upper.length) {
+      groups.push('AY');
+      index += 2;
+      continue;
+    }
+    const vowelPattern = VOWEL_PATTERNS[pair];
+    if (vowelPattern) {
+      groups.push(...vowelPattern);
+      index += 2;
+      continue;
+    }
+    const consonantPattern: Readonly<Record<string, readonly string[]>> = {
+      TH: ['TH'], SH: ['SH'], CH: ['CH'], PH: ['F'], NG: ['NG'], NK: ['NG', 'K'], CK: ['K'], WH: ['W'], QU: ['K', 'W'],
+    };
+    if (consonantPattern[pair]) {
+      groups.push(...consonantPattern[pair]!);
+      index += 2;
+      continue;
+    }
+
+    const letter = upper[index]!;
+    if (letter === upper[index + 1] && !VOWEL_LETTERS.has(letter)) {
+      index += 1;
+      continue;
+    }
+    if (letter === 'C') {
+      groups.push(/[EIY]/.test(upper[index + 1] ?? '') ? 'S' : 'K');
+    } else if (letter === 'Y') {
+      if (index === 0) groups.push('Y');
+      else if (index === upper.length - 1 && !VOWEL_LETTERS.has(upper[index - 1] ?? '')) {
+        const hasOtherVowel = [...upper.slice(0, -1)].some((candidate) => /[AEIOU]/.test(candidate));
+        groups.push(hasOtherVowel ? 'IY' : 'AY');
+      } else {
+        groups.push('IH');
+      }
+    } else if (SINGLE_VOWELS[letter]) {
+      groups.push(SINGLE_VOWELS[letter]!);
+    } else if (CONSONANTS[letter]) {
+      groups.push(...CONSONANTS[letter]!);
+    }
+    index += 1;
   }
-  return groups.length > 0 ? groups : ['SIL'];
+  return groups;
 }
 
 /** A held vowel against a passed-through consonant, in relative weight. Real
@@ -78,7 +173,7 @@ const VOWEL_WEIGHT = 1.7;
 const CONSONANT_WEIGHT = 1;
 
 function groupWeight(group: string): number {
-  return VOWEL_GROUPS.has(group) ? VOWEL_WEIGHT : CONSONANT_WEIGHT;
+  return VOWEL_GROUPS.has(group.replace(/\d+$/, '')) ? VOWEL_WEIGHT : CONSONANT_WEIGHT;
 }
 
 /** Gap inserted between words. Real speech has micro-pauses; without one the
@@ -133,7 +228,7 @@ export function estimate(text: string, speed: number): { cues: SpeechCue[]; word
     });
     cursor += duration;
   }
-  return { cues, words, durationMs: cursor };
+  return { cues, words, durationMs: cursor + TRAILING_REST_MS };
 }
 
 class SpeechSynthesisPlayback implements ExternalPlayback {

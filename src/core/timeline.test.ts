@@ -1,16 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import {
-  FRAME_CROSSFADE_MS,
-  POSE_ARTICULATION,
-  commitmentFor,
-  mixArticulation,
-  poseWeights,
-} from './articulation';
+import { POSE_ARTICULATION, poseWeights } from './articulation';
 import { ALL_POSES } from './poses';
 import { migrateStoredAvatar } from '../store/avatarStore';
 import type { LegacyStoredAvatarV1 } from '../store/avatarStore';
 import { TRAILING_REST_MS } from './visemeMap';
-import { articulationAt, buildTimeline, mouthAt } from './timeline';
+import { buildTimeline, mouthAt } from './timeline';
 import type { MouthTimeline, SpeechCue } from './types';
 
 const cue = (startMs: number, endMs: number, symbol: string): SpeechCue => ({
@@ -92,55 +86,6 @@ describe('mouthAt', () => {
 
   it('returns REST for an empty timeline', () => {
     expect(mouthAt([], 0)).toBe('REST');
-  });
-});
-
-describe('articulationAt', () => {
-  it('resolves a sustained span to its reference pose', () => {
-    const timeline: MouthTimeline = [
-      { startMs: 0, endMs: 200, mouth: 'WIDE' },
-    ];
-
-    expect(articulationAt(timeline, 100)).toEqual(POSE_ARTICULATION.WIDE);
-  });
-
-  it('lands a brief span strictly between the previous pose and its reference pose', () => {
-    const timeline: MouthTimeline = [
-      { startMs: 0, endMs: 200, mouth: 'BIG_OPEN' },
-      { startMs: 200, endMs: 240, mouth: 'ROUND' },
-    ];
-    const resolved = articulationAt(timeline, 200 + FRAME_CROSSFADE_MS);
-    const expected = mixArticulation(
-      POSE_ARTICULATION.BIG_OPEN,
-      POSE_ARTICULATION.ROUND,
-      commitmentFor('ROUND', 40),
-    );
-
-    expect(resolved).toEqual(expected);
-    expect(resolved.lipRound).toBeGreaterThan(POSE_ARTICULATION.BIG_OPEN.lipRound);
-    expect(resolved.lipRound).toBeLessThan(POSE_ARTICULATION.ROUND.lipRound);
-  });
-
-  it('reaches full closure even for a span shorter than the frame crossfade', () => {
-    const boundary = 200 + FRAME_CROSSFADE_MS / 2;
-    const timeline: MouthTimeline = [
-      { startMs: 0, endMs: 200, mouth: 'BIG_OPEN' },
-      { startMs: 200, endMs: boundary, mouth: 'CLOSED' },
-      { startMs: boundary, endMs: 400, mouth: 'BIG_OPEN' },
-    ];
-
-    expect(articulationAt(timeline, boundary)).toEqual(POSE_ARTICULATION.CLOSED);
-  });
-
-  it('is continuous across a span boundary', () => {
-    const timeline: MouthTimeline = [
-      { startMs: 0, endMs: 200, mouth: 'BIG_OPEN' },
-      { startMs: 200, endMs: 400, mouth: 'ROUND' },
-    ];
-    const justBefore = articulationAt(timeline, 199.999);
-    const atBoundary = articulationAt(timeline, 200);
-
-    expect(atBoundary).toEqual(justBefore);
   });
 });
 

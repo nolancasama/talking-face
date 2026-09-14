@@ -1,5 +1,6 @@
 import { VISUAL_LEAD_MS } from '../core/articulation';
 import type { Articulation } from '../core/articulation';
+import type { CoarticulationDebug } from '../core/coarticulation';
 import type { MouthPose, MouthTimeline, PlaybackTimingDebug } from '../core/types';
 import type { LipSyncPlayer } from '../player/lipSyncPlayer';
 
@@ -77,10 +78,28 @@ export function describeTiming(timing: PlaybackTimingDebug): string {
   return timing.phase.toUpperCase();
 }
 
+/**
+ * One-line linguistic decision, e.g.
+ * `/t/ ‹/uw/› /n/ · vowel ×1.00 · anticipate CLOSE 0.31 · carry ALVEOLAR 0.12`.
+ */
+export function describeSpeechSound(speech: CoarticulationDebug): string {
+  const symbol = (phoneme: string | null): string => (phoneme === null ? '·' : `/${phoneme.toLowerCase()}/`);
+  const stress = speech.stress === null ? '' : ` s${speech.stress}`;
+  const parts = [
+    `${symbol(speech.previous)} ‹${symbol(speech.phoneme)}› ${symbol(speech.next)}`,
+    `${speech.phonemeClass} ×${speech.strength.toFixed(2)}${stress}`,
+  ];
+  if (speech.critical) parts.push(`CRITICAL ${speech.critical}`);
+  if (speech.anticipation) parts.push(`anticipate ${speech.anticipation.feature} ${speech.anticipation.share.toFixed(2)}`);
+  if (speech.carryover) parts.push(`carry ${speech.carryover.feature} ${speech.carryover.share.toFixed(2)}`);
+  return parts.join(' · ');
+}
+
 /** A separate, read-only diagnostic surface for LipSyncPlayer state. */
 export class DebugOverlay {
   private readonly root = document.createElement('aside');
   private readonly stateValue = document.createElement('strong');
+  private readonly soundValue = document.createElement('strong');
   private readonly posesValue = document.createElement('span');
   private readonly clockValue = document.createElement('span');
   private readonly visualValue = document.createElement('span');
@@ -121,6 +140,7 @@ export class DebugOverlay {
       this.controls.set(key, { value, fill, target });
     }
 
+    const sound = this.makeMetric('sound', this.soundValue);
     const poses = this.makeMetric('poses', this.posesValue);
     const weights = this.makeMetric('weights', this.weightsValue);
     const clock = this.makeMetric('clock', this.clockValue, ' ms');
@@ -142,7 +162,7 @@ export class DebugOverlay {
       item.append(swatch, state);
       legend.append(item);
     }
-    this.root.append(heading, controls, poses, weights, clock, visual, lead, speech, pace, this.timelineCanvas, legend);
+    this.root.append(heading, sound, controls, poses, weights, clock, visual, lead, speech, pace, this.timelineCanvas, legend);
   }
 
   mount(host: HTMLElement): void {
@@ -176,6 +196,7 @@ export class DebugOverlay {
 
     const snapshot = session.player.getSnapshot();
     this.stateValue.textContent = snapshot.activeMouthState;
+    this.soundValue.textContent = snapshot.speech ? describeSpeechSound(snapshot.speech) : '—';
     this.posesValue.textContent = snapshot.availablePoses.join(' ');
     this.clockValue.textContent = snapshot.clockPositionMs.toFixed(1);
     this.visualValue.textContent = snapshot.visualTimeMs.toFixed(1);
@@ -192,7 +213,9 @@ export class DebugOverlay {
       const elements = this.controls.get(key)!;
       const current = snapshot.currentArticulation[key];
       const target = snapshot.targetArticulation[key];
-      elements.value.textContent = `${current.toFixed(3)} → ${target.toFixed(3)}`;
+      // current → coarticulated target (the sound's own target)
+      const own = snapshot.speech ? ` (${snapshot.speech.target[key].toFixed(2)})` : '';
+      elements.value.textContent = `${current.toFixed(3)} → ${target.toFixed(3)}${own}`;
       elements.fill.style.width = `${Math.min(1, Math.max(0, current)) * 100}%`;
       elements.target.style.left = `${Math.min(1, Math.max(0, target)) * 100}%`;
     }
@@ -203,6 +226,7 @@ export class DebugOverlay {
 
   private renderIdle(): void {
     this.stateValue.textContent = 'IDLE';
+    this.soundValue.textContent = '—';
     this.posesValue.textContent = '—';
     this.clockValue.textContent = '—';
     this.visualValue.textContent = '—';

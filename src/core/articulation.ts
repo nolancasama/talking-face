@@ -72,18 +72,23 @@ export const VISUAL_LEAD_MS = 50;
 
 /**
  * Smoothing time constants, in ms to close ~63% of the distance to a target.
- * The jaw is deliberately slower than the lips: a jaw physically cannot
- * re-articulate per consonant, and letting it try is much of what reads as
- * frantic. Tongue tracks the lips -- it is a fast articulator.
+ *
+ * Articulator dynamics (early rounding, fast closure, slow jaw, low-visibility
+ * consonants) now live in the coarticulated target itself -- see
+ * coarticulation.ts. This smoothing is only the last anti-jitter stage (Web
+ * Speech re-anchors the clock at every word boundary), so it is lighter than
+ * when it was the only thing standing between pose-to-pose jumps and the
+ * screen: at the old 90ms the jaw lagged a 100ms vowel by most of its length.
+ * The ordering is kept: jaw slowest, closure fastest.
  */
-export const JAW_TAU_MS = 90;
-export const LIP_TAU_MS = 45;
-export const TONGUE_TAU_MS = 45;
+export const JAW_TAU_MS = 50;
+export const LIP_TAU_MS = 30;
+export const TONGUE_TAU_MS = 30;
 /**
  * Closure is the fastest control. M/B/P must visibly meet the lips; smoothing
  * that as slowly as the others turns a plosive into a mumble.
  */
-export const CLOSURE_TAU_MS = 28;
+export const CLOSURE_TAU_MS = 12;
 
 /**
  * Crossfade between reference frames. Deliberately short: alpha-blending two
@@ -114,6 +119,11 @@ export const PROTECTED_POSES: readonly MouthPose[] = ['CLOSED', 'TEETH_LIP', 'TH
 /** How fully a span of the given duration should commit to its pose. */
 export function commitmentFor(pose: MouthPose, durationMs: number): number {
   if (PROTECTED_POSES.includes(pose)) return 1;
+  return durationCommitment(durationMs);
+}
+
+/** Duration-proportional commitment, independent of pose (see FULL_COMMIT_MS). */
+export function durationCommitment(durationMs: number): number {
   const ratio = Math.max(0, durationMs) / FULL_COMMIT_MS;
   return Math.min(1, Math.max(MIN_COMMIT, ratio));
 }

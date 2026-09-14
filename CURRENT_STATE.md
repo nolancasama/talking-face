@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-09-08
+Last updated: 2026-09-14
 
 ## What this is
 
@@ -22,9 +22,16 @@ working PWA (43kB app + 126kB MediaPipe, ~176KB precached shell).
   similarity registration on rigid anatomy, jaw-inclusive region sizing across
   all five shots, plateau-to-edge feather mask, five-frame baking, capture gates.
 - **Speech** — `src/tts/` : Azure provider (via proxy; dev-only direct mode) and
-  a Web Speech fallback. `src/core/timeline.ts` builds gapless merged timelines.
+  a Web Speech fallback whose estimator uses a small lexicon + spelling rules to
+  emit ARPAbet with stress digits on function words (uncommitted).
+- **Articulation (uncommitted, 2026-09-14)** — tokens → phoneme + stress
+  (`visemeMapper.ts`) → `phonemeArticulation.ts` profiles → `coarticulation.ts`
+  dominance-blended track with critical constraints for M/B/P, F/V, TH. This
+  drives the renderer. `timeline.ts` now only builds the debug pose strip.
+  `?debug=1` has a `sound` row, e.g. `/t/ ‹/uw/› /n/ · vowel ×1.00 · anticipate CLOSE 0.31`.
 - **Playback** — `src/player/` : `PlaybackClock` implementations and
-  `LipSyncPlayer`, which derives mouth state from playback position every frame.
+  `LipSyncPlayer`, which samples the articulation track at playback position +
+  `VISUAL_LEAD_MS` every frame.
 - **UI** — `src/ui/screens/` : welcome, one eleven-photo capture run
   (`ONBOARDING_POSES`, skip offered after 3 quality failures; uncommitted),
   preview with Adjust,
@@ -85,11 +92,22 @@ Also unverified on a device: camera capture flow, the quality-gate thresholds
    "Hello." the row should read `WAITING FOR SPEECH START · …ms` with the face
    at REST until the voice is audible. If it ever reads `STARTED via fallback`,
    that voice does not fire onstart — note which one.
+6. **Coarticulation (2026-09-14, unit-tested and traced, not yet seen on a face).**
+   With a captured avatar and `?debug=1`, speak "Mom made apple pie.", "Five
+   funny thieves like shiny red shoes.", "Too many blue balloons.", "I think
+   this is very good." Judge: lips visibly meet on every M/B/P, F/V touch,
+   TH shows tongue, K/G/H make no jaw jump, rounding starts before OO. Known
+   risk: a half-closed mouth (M release, closure anticipated across a word gap)
+   resolves to the TEETH_LIP photo for a frame or two; that is pose-blending
+   geometry, not the articulation model. Tuning lives in
+   `PHONEME_PROFILES` and the reach tables in `coarticulation.ts`.
 
 ## Codex / delegated work
 
 All delegated slices (alignment, speech, UI, and the Stage 2 mesh lab) are
-complete and reviewed. Nothing is in flight. The mesh-lab slice
+complete and reviewed. Nothing is in flight. The Web Speech estimator slice
+(`.ai/wo-webspeech-g2p.json`, Codex, 2026-09-14) is reviewed and uncommitted;
+Claude added the NK → NG K rule after its "think" test failed. The mesh-lab slice
 (`.ai/wo-mesh-lab.json`) is reviewed but **uncommitted** — it is working-tree
 only, pending the visual gate above. Review corrections are recorded in
 DESIGN_DECISIONS.md and in the commit messages.

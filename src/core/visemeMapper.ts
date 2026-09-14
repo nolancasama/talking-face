@@ -1,27 +1,28 @@
-import {
-  AZURE_VISEME_TO_POSE,
-  FALLBACK_POSE,
-  PHONEME_TO_POSE,
-  R_POSE,
-} from './visemeMap';
+import { poseWeights } from './articulation';
+import { parsePhoneme, profileFor } from './phonemeArticulation';
+import type { ParsedPhoneme } from './phonemeArticulation';
+import { AZURE_VISEME_TO_PHONEME } from './visemeMap';
 import type { MouthPose, SpeechToken } from './types';
 
-/** Resolve a provider token to the canonical mouth-pose vocabulary. */
-export function mapSpeechToken(token: SpeechToken): MouthPose {
-  if (token.kind === 'silence') return 'REST';
-
-  if (token.kind === 'phoneme') {
-    const symbol = token.symbol.trim().replace(/\d/g, '').toUpperCase();
-    if (symbol === 'R') return R_POSE;
-    return PHONEME_TO_POSE[symbol] ?? FALLBACK_POSE;
-  }
-
+/** Normalise any provider token to a phoneme symbol plus stress. */
+export function phonemeForToken(token: SpeechToken): ParsedPhoneme {
+  if (token.kind === 'silence') return { symbol: 'SIL', stress: null };
+  if (token.kind === 'phoneme') return parsePhoneme(token.symbol);
   if (token.provider.toLowerCase() === 'azure') {
-    if (token.id === 13) return R_POSE;
-    return AZURE_VISEME_TO_POSE[token.id] ?? FALLBACK_POSE;
+    const symbol = AZURE_VISEME_TO_PHONEME[token.id];
+    if (symbol !== undefined) return parsePhoneme(symbol);
   }
+  // Unknown: resolves to the low-strength fallback profile.
+  return { symbol: '?', stress: null };
+}
 
-  return FALLBACK_POSE;
+/**
+ * The captured reference pose nearest a token's full articulation. Used for
+ * the debug pose strip only; the renderer follows the coarticulated track.
+ */
+export function mapSpeechToken(token: SpeechToken): MouthPose {
+  const { articulation } = profileFor(phonemeForToken(token).symbol);
+  return poseWeights(articulation)[0]?.pose ?? 'REST';
 }
 
 /** Kept as a convenient viseme-oriented name for provider implementations. */

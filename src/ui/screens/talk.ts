@@ -1,3 +1,4 @@
+import { buildArticulationTrack } from '../../core/coarticulation';
 import { buildTimeline } from '../../core/timeline';
 import type { Avatar, MouthTimeline, PlaybackClock, SpeechResult, TTSProvider } from '../../core/types';
 import { AudioElementClock, ExternalPlaybackClock } from '../../player/clock';
@@ -198,7 +199,8 @@ export class TalkScreen implements Screen {
         const clock: PlaybackClock = result.audio
           ? new AudioElementClock(result.audio)
           : new ExternalPlaybackClock(result.externalPlayback!, result.durationMs);
-        const player = new LipSyncPlayer(this.avatar, canvas, timeline, clock);
+        const track = buildArticulationTrack(result.cues, result.durationMs);
+        const player = new LipSyncPlayer(this.avatar, canvas, timeline, clock, track);
         this.cached = { result, timeline, clock, player, text, voiceId: voice.value, speed: Number(speed.value) };
         clock.onEnd(() => {
           if (!this.mounted) return;

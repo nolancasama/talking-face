@@ -491,3 +491,54 @@ opt-in.
 (would break older avatars and force recapture). Removing the upgrade path
 (older avatars still need it). A skip button on every step (makes skipping the
 easy path).
+
+---
+
+## 2026-09-14 — Web Speech lexicon and rule estimator
+
+**Decision.** Web Speech estimation uses a compact frequent-word lexicon followed
+by spelling rules that emit supported ARPAbet symbols. Reduced function-word
+vowels carry stress digit `0`, and the estimate now appends its 120ms trailing
+REST after the final cue instead of reserving that time over the end of speech.
+
+---
+
+## 2026-09-14 — Coarticulated articulation track replaces pose-to-pose commitment
+
+**Decision.** The renderer's target articulation now comes from
+`src/core/coarticulation.ts`, not from `articulationAt(timeline)`. Every token is
+first normalised to an ARPAbet phoneme plus optional stress (`visemeMapper.ts`;
+Azure visemes via `AZURE_VISEME_TO_PHONEME`), then looked up in
+`src/core/phonemeArticulation.ts`, where each sound has a target, a visual
+strength, per-control dominance, anticipatory/carryover reach and optional
+critical controls. The track blends neighbours with a dominance function
+(Cohen–Massaro style): weight = strength × control dominance × temporal
+falloff, with separate reach before and after each sound, plus per-control reach
+multipliers (rounding early, closure fast, jaw slow, tongue brief). Critical
+gestures are then enforced as constraints: M/B/P closure + jaw + no rounding,
+F/V teeth-on-lip, TH/DH tongue, each for at least 50ms. Diphthongs split into
+nucleus and offglide. Short/unstressed vowels shrink toward `SPEECH_NEUTRAL`;
+consonants have a 0.85 duration floor. Silences of ≥90ms or at the utterance
+edges are barriers that render REST and block influence; shorter inter-word gaps
+are weak (0.15). The captured-pose table (`PHONEME_TO_POSE`, `R_POSE`,
+`FALLBACK_POSE`) is gone: the debug pose strip derives the nearest pose from each
+profile's target. The player's smoothing was lightened (jaw 90→50, lips/tongue
+45→30, closure 28→12) because articulator dynamics now live in the target.
+
+**Why.** The old pipeline mapped each sound to one of eleven poses and
+committed toward it with symmetric 18ms crossfades and no lookahead. T/D/N/K/G/
+NG/H/R all became a full SMALL_OPEN target, S/Z/Y a full EEE smile, every 55ms
+inter-word gap dropped the mouth to REST, and upcoming rounding or closure had no
+effect until its boundary.
+
+**Details worth keeping.** Unrounded vowels have low rounding dominance (0.35),
+so they do not fight an adjacent W or SH for a lip dimension they do not specify.
+Bilabials constrain rounding because no captured photograph shows rounded
+closure: coarticulated rounding there resolved to a ghosted SH_CH frame (CLOSED
+weight 0.65). Barriers exist so the Web Speech start wait and punctuation holds,
+which park visual time 1ms before the next word, still show REST.
+
+**Rejected.** An equal three-way average of previous/current/next. Lowering all
+smoothing constants as the fix. Strength measured relative to REST (a weak
+consonant would then close the mouth between vowels instead of yielding to them).
+A new continuous dimension or new captured poses.
