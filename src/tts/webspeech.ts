@@ -55,7 +55,22 @@ const EXCEPTION_PHONEMES: Readonly<Record<string, readonly string[]>> = {
   blue: ['B', 'L', 'UW1'], shoes: ['SH', 'UW1', 'Z'], apple: ['AE1', 'P', 'AH0', 'L'],
   balloons: ['B', 'AH0', 'L', 'UW1', 'N', 'Z'], can: ['K', 'AE1', 'N'],
   and: ['AE0', 'N', 'D'], for: ['F', 'AO0', 'R'], or: ['AO0', 'R'],
+  // O as /u/: the magic-e rule would say OW.
+  move: ['M', 'UW1', 'V'], prove: ['P', 'R', 'UW1', 'V'], lose: ['L', 'UW1', 'Z'],
+  who: ['HH', 'UW1'], two: ['T', 'UW1'],
 };
+
+/**
+ * "moved", "liked", "names": a silent-e stem plus an inflection. Resolving the
+ * stem first keeps its long vowel (and any lexicon entry) instead of reading
+ * the E as a vowel. Stems ending in T/D/S/X/Z/CH/SH are left alone: there the
+ * E is actually pronounced ("wanted", "boxes").
+ */
+function silentEStem(lower: string): { stem: string; ending: string } | null {
+  const match = lower.match(/^(.*[aeiou][^aeiouy])e([ds])$/);
+  if (!match || /(?:[tdsxz]|ch|sh)$/.test(match[1]!)) return null;
+  return { stem: `${match[1]!}e`, ending: match[2] === 'd' ? 'D' : 'Z' };
+}
 
 const VOWEL_LETTERS = new Set(['A', 'E', 'I', 'O', 'U', 'Y']);
 const SINGLE_VOWELS: Readonly<Record<string, string>> = {
@@ -79,8 +94,11 @@ const CONSONANTS: Readonly<Record<string, readonly string[]>> = {
  * provide phoneme timing. Whole-word exceptions cover common irregular words;
  * the rules deliberately emit only symbols understood by PHONEME_PROFILES. */
 export function phonemeGroups(word: string): string[] {
-  const exception = EXCEPTION_PHONEMES[word.toLocaleLowerCase('en-US')];
+  const lower = word.toLocaleLowerCase('en-US');
+  const exception = EXCEPTION_PHONEMES[lower];
   if (exception) return [...exception];
+  const inflected = silentEStem(lower);
+  if (inflected) return [...phonemeGroups(inflected.stem), inflected.ending];
 
   const groups: string[] = [];
   const upper = word.toUpperCase().replace(/[^A-Z]/g, '');
@@ -150,6 +168,9 @@ export function phonemeGroups(word: string): string[] {
       } else {
         groups.push('IH');
       }
+    } else if (letter === 'O' && index > 0 && index === upper.length - 1 && !VOWEL_LETTERS.has(upper[index - 1]!)) {
+      // Open final O is long: go, no, so, hello, photo.
+      groups.push('OW');
     } else if (SINGLE_VOWELS[letter]) {
       groups.push(SINGLE_VOWELS[letter]!);
     } else if (CONSONANTS[letter]) {
@@ -171,9 +192,33 @@ export function phonemeGroups(word: string): string[] {
  *  get room to actually register. */
 const VOWEL_WEIGHT = 1.7;
 const CONSONANT_WEIGHT = 1;
+/**
+ * Stress shapes duration inside a word as much as vowel-vs-consonant does. With
+ * one vowel weight, "about" gave its schwa 113ms and its stressed /aU/ 113ms
+ * split into two ~55ms halves: "a-" hung open while "-bout" flashed past.
+ */
+const REDUCED_VOWEL_WEIGHT = 1.1;
+const DIPHTHONG_WEIGHT = 2.2;
+const DIPHTHONG_GROUPS = new Set(['AY', 'AW', 'EY', 'OW', 'OY']);
 
 function groupWeight(group: string): number {
-  return VOWEL_GROUPS.has(group.replace(/\d+$/, '')) ? VOWEL_WEIGHT : CONSONANT_WEIGHT;
+  const symbol = group.replace(/\d+$/, '');
+  if (!VOWEL_GROUPS.has(symbol)) return CONSONANT_WEIGHT;
+  if (group.endsWith('0')) return REDUCED_VOWEL_WEIGHT;
+  return DIPHTHONG_GROUPS.has(symbol) ? DIPHTHONG_WEIGHT : VOWEL_WEIGHT;
+}
+
+/**
+ * Word duration is estimated from letter count, which badly undersizes short
+ * words carrying a full vowel: "go" came out at 144ms, too short for the jaw
+ * to reach the OH shape at all. Reduced function words ("a", "to", "the")
+ * really are that short and keep their letter-count estimate.
+ */
+const MIN_CONTENT_WORD_MS = 180;
+
+function minimumWordMs(groups: readonly string[]): number {
+  const fullVowel = groups.some((group) => VOWEL_GROUPS.has(group.replace(/\d+$/, '')) && !group.endsWith('0'));
+  return fullVowel ? MIN_CONTENT_WORD_MS : 0;
 }
 
 /** Gap inserted between words. Real speech has micro-pauses; without one the
@@ -204,8 +249,8 @@ export function estimate(text: string, speed: number): { cues: SpeechCue[]; word
     const { barrier, punctuation } = next
       ? classifyGap(text.slice(wordEnd, next.index ?? wordEnd), word, next[0])
       : { ...classifyGap(text.slice(wordEnd), word, ''), barrier: 'none' as const };
-    const duration = word.length * BASE_CHARACTER_MS / safeSpeed;
     const groups = phonemeGroups(word);
+    const duration = Math.max(word.length * BASE_CHARACTER_MS, minimumWordMs(groups)) / safeSpeed;
     const weights = groups.map(groupWeight);
     const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
     const cueStart = cues.length;

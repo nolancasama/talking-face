@@ -83,7 +83,13 @@ export const VISUAL_LEAD_MS = 50;
  */
 export const JAW_TAU_MS = 50;
 export const LIP_TAU_MS = 30;
-export const TONGUE_TAU_MS = 30;
+/**
+ * The tongue is the fastest-moving visible articulator and its gestures are
+ * brief: at 30ms a 77ms TH showed the TH photograph for only two frames, the
+ * rest of it spent ramping through the L frame -- which also made the vowel
+ * after TH appear ~40ms late. Matches CLOSURE_TAU_MS: both are flick gestures.
+ */
+export const TONGUE_TAU_MS = 12;
 /**
  * Closure is the fastest control. M/B/P must visibly meet the lips; smoothing
  * that as slowly as the others turns a plosive into a mumble.

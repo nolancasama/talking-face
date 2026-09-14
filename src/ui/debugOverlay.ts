@@ -89,6 +89,17 @@ export function describeSpeechSound(speech: CoarticulationDebug): string {
     `${symbol(speech.previous)} ‹${symbol(speech.phoneme)}› ${symbol(speech.next)}`,
     `${speech.phonemeClass} ×${speech.strength.toFixed(2)}${stress}`,
   ];
+  if (speech.rest) {
+    parts.push(speech.rest === 'relaxing' ? 'REST relaxing' : speech.rest === 'barrier' ? 'REST barrier' : 'short pause');
+  } else {
+    // e.g. "OW 92ms → visible 130ms · final-vowel protect"
+    const visible = speech.dwellMs > 0 ? ` → visible ${(speech.sourceMs + speech.dwellMs).toFixed(0)}ms` : '';
+    const notes = [
+      speech.part !== 'whole' ? speech.part : '',
+      speech.dwellMs > 0 ? (speech.phraseFinal ? 'final-vowel protect' : 'dwell') : '',
+    ].filter(Boolean).join(' ');
+    parts.push(`${speech.sourceMs.toFixed(0)}ms${visible}${notes ? ` · ${notes}` : ''}`);
+  }
   if (speech.critical) parts.push(`CRITICAL ${speech.critical}`);
   if (speech.anticipation) parts.push(`anticipate ${speech.anticipation.feature} ${speech.anticipation.share.toFixed(2)}`);
   if (speech.carryover) parts.push(`carry ${speech.carryover.feature} ${speech.carryover.share.toFixed(2)}`);

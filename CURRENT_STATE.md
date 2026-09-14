@@ -92,15 +92,21 @@ Also unverified on a device: camera capture flow, the quality-gate thresholds
    "Hello." the row should read `WAITING FOR SPEECH START · …ms` with the face
    at REST until the voice is audible. If it ever reads `STARTED via fallback`,
    that voice does not fire onstart — note which one.
-6. **Coarticulation (2026-09-14, unit-tested and traced, not yet seen on a face).**
-   With a captured avatar and `?debug=1`, speak "Mom made apple pie.", "Five
-   funny thieves like shiny red shoes.", "Too many blue balloons.", "I think
-   this is very good." Judge: lips visibly meet on every M/B/P, F/V touch,
-   TH shows tongue, K/G/H make no jaw jump, rounding starts before OO. Known
-   risk: a half-closed mouth (M release, closure anticipated across a word gap)
-   resolves to the TEETH_LIP photo for a frame or two; that is pose-blending
-   geometry, not the articulation model. Tuning lives in
-   `PHONEME_PROFILES` and the reach tables in `coarticulation.ts`.
+6. **Perceptual timing pass (2026-09-14, uncommitted, traced + tested, not yet
+   re-seen on a face).** The live coarticulation engine was tested on a real
+   face: Too blue / Kick the ball / She chose shoes / F/V / bilabials were good;
+   "moved", "hello" and "Think about this" were not. Fixes (see DESIGN_DECISIONS):
+   estimator ("moved" had no /u/, "hello"/"go" no OH), minimum vowel dwell
+   borrowed from consonants, phrase-final REST relaxation, diphthong 60/40 with
+   glide undershoot, OW → OPEN_ROUND target, tongue smoothing 12ms. Re-test on
+   the face: "Mom moved.", "Hello, Lily.", "Think about this.", "Moved.",
+   "Go.", "Hello.", "Think.", "This.", "Three.", "Mother.", plus the phrases
+   that already worked. The `?debug=1` sound row (dev server only) now shows
+   e.g. `OW 108ms → visible 150ms · nucleus final-vowel protect`. Tuning lives
+   in `PHONEME_PROFILES`, `MIN_VOWEL_DWELL_MS` and the reach tables in
+   `coarticulation.ts`. Scratch trace scripts are not in the repo; the
+   "perceptual timing" tests in `coarticulation.test.ts` simulate the player
+   and are the regression harness.
 
 ## Codex / delegated work
 

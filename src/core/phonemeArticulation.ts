@@ -53,6 +53,8 @@ export interface PhonemeArticulationProfile {
    * enforced as constraints after blending, not merely weighted heavily.
    */
   readonly critical?: readonly ArticulationControl[];
+  /** How hard each critical constraint pulls (default 1 = reach the target exactly). */
+  readonly criticalPull?: Partial<Record<ArticulationControl, number>>;
   /** Diphthong second target (a symbol in this table). */
   readonly offglide?: string;
   /** Short debug label for the visible gesture, e.g. ROUND. */
@@ -101,11 +103,15 @@ const BILABIAL: PhonemeArticulationProfile = {
   anticipatoryMs: 70,
   // Release is fast; approach is not. This is what makes "am" and "ma" differ.
   carryoverMs: 35,
-  // Rounding is constrained too. Real lips do stay rounded through the M of
-  // "moon", but no captured photograph shows rounded closure, so any rounding
-  // here resolves to a second (SH_CH/ROUND) frame ghosted over the closed
-  // lips. Rounding for the /u/ starts at the release instead.
+  // Rounding is constrained too, but only partly. Real lips stay rounded
+  // through the M of "moon"/"moved"; no captured photograph shows rounded
+  // closure, so full rounding here ghosts an SH_CH frame over the closed lips.
+  // Forcing it to zero, though, made the /u/ after an M start ~60ms late
+  // (rounding had to build from nothing after the release) and "moved" showed
+  // its ROUND frame for two frames. 60% keeps closure dominant and gives the
+  // vowel a head start.
   critical: ['lipClosure', 'jawOpen', 'lipRound'],
+  criticalPull: { lipRound: 0.6 },
   feature: 'CLOSE',
 };
 
@@ -113,7 +119,10 @@ const LABIODENTAL: PhonemeArticulationProfile = {
   class: 'labiodental',
   articulation: { ...POSE_ARTICULATION.TEETH_LIP },
   visualStrength: 0.95,
-  controls: { lipRound: 0.4, tongue: 0.2 },
+  // Teeth on lip is the gesture; lip spread is not. At full width dominance an
+  // approaching V spread the rounded /u/ of "moved" into the SH_CH frame for
+  // most of the vowel. F/V themselves still resolve by closure.
+  controls: { lipWidth: 0.5, lipRound: 0.4, tongue: 0.2 },
   anticipatoryMs: 60,
   carryoverMs: 35,
   critical: ['lipClosure', 'jawOpen'],
@@ -191,8 +200,11 @@ export const SILENCE_PROFILE: PhonemeArticulationProfile = {
   class: 'silence',
   articulation: { ...POSE_ARTICULATION.REST },
   visualStrength: 1,
-  // Brisk: speech onset and offset should not lag the audio.
-  anticipatoryMs: 30,
+  // A pause never reaches back into the sound before it: REST pulling on the
+  // end of a phrase-final vowel was stealing its visible tail ("hell-" then
+  // REST). The relaxation happens inside the pause instead (REST_RELAX_MS).
+  anticipatoryMs: 0,
+  // Brisk onset: speech after a pause should not lag the audio.
   carryoverMs: 30,
   feature: 'REST',
 };
@@ -227,7 +239,9 @@ export const PHONEME_PROFILES: Readonly<Record<string, PhonemeArticulationProfil
   AY: vowel(art({ jawOpen: 0.85, lipWidth: 0.5 }), 'OPEN', { offglide: 'IH' }),
   AW: vowel(art({ jawOpen: 0.8, lipWidth: 0.5, lipRound: 0.05 }), 'OPEN', { offglide: 'UH' }),
   EY: vowel(art({ jawOpen: 0.4, lipWidth: 0.75 }), 'MID', { offglide: 'IY' }),
-  OW: vowel(art({ jawOpen: 0.5, lipWidth: 0.3, lipRound: 0.75 }), 'ROUND', { anticipatoryMs: 60, offglide: 'UW' }),
+  // OH is exactly what the OPEN_ROUND capture asks for ("Say OH"). At jaw 0.5
+  // a short "go" never opened past the SH_CH frame.
+  OW: vowel({ ...POSE_ARTICULATION.OPEN_ROUND }, 'ROUND', { anticipatoryMs: 60, offglide: 'UW' }),
   OY: vowel(art({ jawOpen: 0.6, lipWidth: 0.3, lipRound: 0.7 }), 'ROUND', { anticipatoryMs: 60, offglide: 'IY' }),
 
   P: BILABIAL, B: BILABIAL, M: BILABIAL,

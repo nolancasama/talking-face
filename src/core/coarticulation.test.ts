@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { POSE_ARTICULATION, poseWeights } from './articulation';
+import { POSE_ARTICULATION, VISUAL_LEAD_MS, poseWeights, smoothArticulation } from './articulation';
 import type { Articulation } from './articulation';
 import {
   BARRIER_SILENCE_MS,
+  MIN_VOWEL_DWELL_MS,
   buildArticulationTrack,
   coarticulate,
   describeCoarticulation,
@@ -294,5 +295,195 @@ describe('describeCoarticulation', () => {
     expect(debug.next).toBe('N');
     expect(debug.phonemeClass).toBe('vowel');
     expect(debug.carryover?.feature).toBe('CLOSE');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Perceptual timing: what actually reaches the screen. These simulate the
+// player (visual lead + per-frame smoothing at 60fps), because a vowel can be
+// correct in the target and still never be visible once rendered.
+// ---------------------------------------------------------------------------
+
+const FRAME_MS = 1000 / 60;
+
+interface RenderedFrame {
+  /** Visual (track) time of the frame. */
+  readonly ms: number;
+  readonly articulation: Articulation;
+}
+
+function render(track: ArticulationTrack): RenderedFrame[] {
+  const frames: RenderedFrame[] = [];
+  let current = coarticulate(track, VISUAL_LEAD_MS);
+  for (let clock = 0; clock <= track.durationMs; clock += FRAME_MS) {
+    const ms = clock + VISUAL_LEAD_MS;
+    current = smoothArticulation(current, coarticulate(track, ms), FRAME_MS);
+    frames.push({ ms, articulation: current });
+  }
+  return frames;
+}
+
+/** Longest continuous on-screen time for which `holds` is true. */
+function longestVisibleMs(frames: readonly RenderedFrame[], holds: (a: Articulation) => boolean): number {
+  let best = 0;
+  let run = 0;
+  for (const frame of frames) {
+    run = holds(frame.articulation) ? run + 1 : 0;
+    best = Math.max(best, run);
+  }
+  return best * FRAME_MS;
+}
+
+describe('perceptual timing: rounded vowel in "moved"', () => {
+  // Durations as the Web Speech estimator produces them for "moved".
+  const moved = speak(['M', 77], ['UW1', 130], ['V', 77], ['D', 77]);
+
+  it('keeps strong rounding on screen long enough to register', () => {
+    expect(longestVisibleMs(render(moved), (a) => a.lipRound >= 0.7 && a.lipClosure < 0.3)).toBeGreaterThanOrEqual(80);
+  });
+
+  it('does not let the M closure start the vowel from zero rounding', () => {
+    const m = segment(moved, 'M');
+    expect(at(moved, middle(m)).lipRound).toBeGreaterThan(0.15);
+    expect(at(moved, middle(m)).lipClosure).toBeGreaterThan(0.98);
+  });
+});
+
+describe('perceptual timing: final OH in "hello"', () => {
+  const hello = speak(['HH', 61], ['EH', 104], ['L', 53], ['OW', 150]);
+
+  it('shows the OH shape clearly before REST', () => {
+    const frames = render(hello);
+    const restStarts = segment(hello, 'SIL', 1).startMs;
+    const beforeRest = frames.filter((frame) => frame.ms < restStarts);
+    expect(longestVisibleMs(beforeRest, (a) => a.lipRound >= 0.6 && a.jawOpen >= 0.35)).toBeGreaterThanOrEqual(60);
+  });
+
+  it('leaves L as it was: tongue up, no big pose', () => {
+    const l = at(hello, middle(segment(hello, 'L')));
+    expect(l.tongue).toBeGreaterThan(0.3);
+    expect(l.jawOpen).toBeLessThan(0.45);
+  });
+});
+
+describe('phrase-final protection', () => {
+  const cases = [
+    ['go.', speak(['G', 53], ['OW', 129])],
+    ['blue.', speak(['B', 78], ['L', 78], ['UW1', 132])],
+    ['hello.', speak(['HH', 61], ['EH', 104], ['L', 53], ['OW', 150])],
+  ] as const;
+
+  it.each(cases)('REST does not pull on the end of the final vowel in %s', (_name, track) => {
+    const pause = track.segments.at(-1)!;
+    const lastSound = track.segments.at(-2)!;
+    const settled = at(track, middle(lastSound));
+    const tail = at(track, lastSound.endMs - 1);
+    expect(tail.lipRound).toBeGreaterThan(settled.lipRound * 0.85);
+    expect(tail.jawOpen).toBeGreaterThan(settled.jawOpen * 0.85);
+    // ...then relaxes continuously inside the pause rather than snapping.
+    const intoPause = at(track, pause.startMs + 1);
+    expect(Math.abs(intoPause.lipRound - tail.lipRound)).toBeLessThan(0.05);
+    expect(at(track, pause.endMs - 1)).toEqual(POSE_ARTICULATION.REST);
+  });
+
+  it('gives a short phrase-final vowel extra visible time, partly from the pause', () => {
+    const track = speak(['T', 80], ['IY1', 70]);
+    const iy = segment(track, 'IY');
+    expect(iy.phraseFinal).toBe(true);
+    expect(iy.endMs - iy.startMs).toBeGreaterThanOrEqual(MIN_VOWEL_DWELL_MS.stressed + MIN_VOWEL_DWELL_MS.phraseFinalBonus - 1);
+    expect(track.durationMs).toBe(LEAD_MS + 80 + 70 + TRAILING_REST_MS);
+  });
+});
+
+describe('minimum vowel dwell', () => {
+  it('borrows time from neighbouring consonants without changing total duration', () => {
+    const track = speak(['T', 80], ['IY1', 60], ['T', 80]);
+    const iy = segment(track, 'IY');
+    expect(iy.sourceMs).toBe(60);
+    expect(iy.endMs - iy.startMs).toBeGreaterThanOrEqual(MIN_VOWEL_DWELL_MS.stressed - 1);
+    for (const t of track.segments.filter((entry) => entry.phoneme === 'T')) {
+      expect(t.endMs - t.startMs).toBeGreaterThanOrEqual(45);
+    }
+    expect(track.segments.at(-1)!.endMs).toBe(LEAD_MS + 220 + TRAILING_REST_MS);
+  });
+
+  it('makes a vowel visible for longer, never bigger', () => {
+    const brief = speak(['T', 80], ['AA', 50], ['T', 80]);
+    const aa = segment(brief, 'AA');
+    expect(aa.dwellMs).toBeGreaterThan(0);
+    expect(aa.target.jawOpen).toBeLessThan(0.6);
+  });
+
+  it('leaves reduced vowels fleeting', () => {
+    const track = speak(['B', 70], ['AH0', 50], ['T', 70]);
+    expect(segment(track, 'AX').dwellMs).toBe(0);
+  });
+});
+
+describe('diphthong timing', () => {
+  it('gives the nucleus more time than the glide, and the glide undershoots', () => {
+    const track = speak(['G', 60], ['OW', 150], ['T', 70]);
+    const nucleus = segment(track, 'OW');
+    const glide = segment(track, 'OW:UW');
+    expect(nucleus.endMs - nucleus.startMs).toBeGreaterThan(glide.endMs - glide.startMs);
+    // Traverses two visibly different states: open-round, then closer and rounder.
+    const open = at(track, middle(nucleus));
+    const closing = at(track, middle(glide));
+    expect(open.jawOpen).toBeGreaterThan(closing.jawOpen + 0.1);
+    expect(closing.lipRound).toBeGreaterThan(open.lipRound);
+    expect(glide.target.lipRound).toBeLessThan(POSE_ARTICULATION.ROUND.lipRound);
+  });
+
+  it('keeps a short diphthong as one clear movement instead of two invisible ones', () => {
+    const track = speak(['T', 45], ['OW', 80], ['T', 45]);
+    expect(track.segments.map((entry) => entry.phoneme)).not.toContain('OW:UW');
+    const ow = segment(track, 'OW');
+    expect(ow.part).toBe('whole');
+    // An 80ms OW is a reduced gesture by design, but still one rounded shape.
+    expect(ow.target.lipRound).toBeGreaterThan(0.5);
+    expect(['OPEN_ROUND', 'ROUND', 'SH_CH']).toContain(nearestPose(ow.target).pose);
+  });
+
+  it('lets a short "go" actually open into the OH shape on screen', () => {
+    const go = speak(['G', 53], ['OW', 129]);
+    const frames = render(go);
+    expect(Math.max(...frames.map((frame) => frame.articulation.jawOpen))).toBeGreaterThan(0.35);
+    expect(Math.max(...frames.map((frame) => frame.articulation.lipRound))).toBeGreaterThan(0.65);
+  });
+});
+
+describe('TH timing', () => {
+  it('shows the tongue in "think", then hands over to the vowel promptly', () => {
+    const think = speak(['TH', 77], ['IH', 130], ['NG', 77], ['K', 77]);
+    const th = segment(think, 'TH');
+    const frames = render(think);
+    expect(longestVisibleMs(frames, (a) => a.tongue >= 0.8)).toBeGreaterThanOrEqual(40);
+    // Tongue gone and the vowel's spread established within ~2 frames of TH ending.
+    const after = frames.find((frame) => frame.ms >= th.endMs + 35)!;
+    expect(after.articulation.tongue).toBeLessThan(0.3);
+    expect(after.articulation.lipWidth).toBeGreaterThan(0.55);
+    // The velar ending stays weak.
+    const k = segment(think, 'K');
+    for (const frame of frames.filter((entry) => entry.ms >= k.startMs && entry.ms < k.endMs)) {
+      expect(frame.articulation.jawOpen).toBeLessThan(0.35);
+    }
+  });
+
+  it('does not let voiced TH in "this" overstay', () => {
+    const thisWord = speak(['DH', 78], ['IH1', 132], ['S', 78]);
+    const dh = segment(thisWord, 'DH');
+    const frames = render(thisWord);
+    expect(longestVisibleMs(frames, (a) => a.tongue >= 0.7)).toBeGreaterThanOrEqual(30);
+    // At most the sound itself plus two frames of ramp (frames are 16.7ms).
+    expect(longestVisibleMs(frames, (a) => a.tongue >= 0.3)).toBeLessThanOrEqual(dh.endMs - dh.startMs + 2 * FRAME_MS);
+  });
+});
+
+describe('preserved behaviour', () => {
+  it('still starts rounding early across "Too blue."', () => {
+    const tooBlue = speak(['T', 80], ['UW', 136], ['_', 55], ['B', 78], ['L', 78], ['UW1', 132]);
+    const l = segment(tooBlue, 'L');
+    expect(at(tooBlue, l.endMs - 10).lipRound).toBeGreaterThan(0.5);
+    expect(at(tooBlue, segment(tooBlue, 'T').endMs - 10).lipRound).toBeGreaterThan(0.25);
   });
 });

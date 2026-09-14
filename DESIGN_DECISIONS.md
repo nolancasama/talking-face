@@ -542,3 +542,51 @@ which park visual time 1ms before the next word, still show REST.
 smoothing constants as the fix. Strength measured relative to REST (a weak
 consonant would then close the mouth between vowels instead of yielding to them).
 A new continuous dimension or new captured poses.
+
+---
+
+## 2026-09-14 — Perceptual timing pass after real-face testing
+
+**Context.** On a real face, "Mom moved" and "Hello" lost their vowels, and
+"Think about this" looked mistimed. "Too blue", "Kick the ball", "She chose
+shoes", F/V and bilabials looked good and were deliberately left alone.
+Traces through the estimator, track and a simulated player (visual lead +
+60fps smoothing) found the causes before anything was tuned.
+
+**Decisions.**
+- *Estimator* (`webspeech.ts`): silent-e stems are resolved before an -d/-s
+  inflection ("moved" was `M AA V EH D`, with no /u/ at all); word-final open O
+  is OW ("hello", "go" had AA); `move/prove/lose/who/two` added to the lexicon.
+  Inside a word, reduced vowels weigh 1.1, full vowels 1.7, diphthongs 2.2 ("about"
+  gave its schwa as much time as its stressed /aU/). Words with a full vowel get
+  at least 180ms ("go" was 144ms, too short for the jaw to reach OH).
+- *Minimum vowel dwell* (`coarticulation.ts`): normal 90ms, stressed 100ms,
+  diphthong 130ms, +20ms phrase-final; reduced vowels none. Time is borrowed
+  from adjacent consonants (floor 45ms) and, for a phrase-final vowel, up to
+  30ms from the pause, so total duration never changes. Gesture size is still
+  judged on the provider duration: visible longer, never bigger.
+- *Phrase ends*: REST no longer anticipates into speech; a pause after speech
+  relaxes to REST over up to 80ms (capped so REST is exact where a punctuation
+  hold parks the clock). Previously REST pulled on the last ~30ms of the final
+  vowel, on top of the 50ms visual lead.
+- *Diphthongs*: nucleus 60% / glide 40%; the glide aims 60% of the way to its
+  target (offglides undershoot); diphthongs under 100ms stay one segment aiming
+  30% along the glide. OW now targets the OPEN_ROUND capture ("Say OH").
+- *Rendering speed of flick gestures*: tongue smoothing 30→12ms (a 77ms TH showed
+  its photo for two frames, and the vowel after it looked ~40ms late).
+- *Local unblocking*: M/B/P constrain rounding at 60% instead of 100% (full
+  suppression made /u/ after M start ~60ms late); F/V width dominance 0.5 (an
+  approaching V spread the /u/ of "moved"). Closure, teeth-on-lip, K/G, L and
+  SH/CH values are unchanged.
+
+**Rejected.** A global vowel minimum (every vowel = 150ms). Slowing all
+animation. Shortening TH globally (traces showed the TH shape was right; the
+lag was smoothing and ramping through the L frame). A larger pronunciation
+table.
+
+**Known limits.** Web Speech still gives no phoneme timestamps: word durations
+come from letter counts and only word starts re-anchor, so a word spoken slower
+than estimated reaches REST before its audio ends. A half-closed mouth still
+resolves to the TEETH_LIP photo for a frame when lips approach closure, and a
+low-jaw /u/ splits between the ROUND and SH_CH photos. Both are photo-blending
+limits.
