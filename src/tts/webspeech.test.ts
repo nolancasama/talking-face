@@ -26,6 +26,14 @@ describe('Web Speech phoneme estimation', () => {
     // Open final O is OH, not AA ("hello" and "go" had no OH at all).
     ['hello', ['HH', 'EH', 'L', 'OW']],
     ['go', ['G', 'OW']],
+    // O in an open first syllable is a stressed OH ("Nolan" was N AA L AE N).
+    ['nolan', ['N', 'OW1', 'L', 'AE', 'N']],
+    ['open', ['OW1', 'P', 'EH', 'N']],
+    ['over', ['OW1', 'V', 'ER']],
+    // ...only the first syllable: the O of "-body" stays short.
+    ['nobody', ['N', 'OW1', 'B', 'AA', 'D', 'IY']],
+    ['body', ['B', 'AA1', 'D', 'IY0']],
+    ['shop', ['SH', 'AA', 'P']],
   ])('maps %s to supported ARPAbet groups', (word, expected) => {
     expect(phonemeGroups(word)).toEqual(expected);
   });

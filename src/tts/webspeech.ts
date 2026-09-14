@@ -58,7 +58,24 @@ const EXCEPTION_PHONEMES: Readonly<Record<string, readonly string[]>> = {
   // O as /u/: the magic-e rule would say OW.
   move: ['M', 'UW1', 'V'], prove: ['P', 'R', 'UW1', 'V'], lose: ['L', 'UW1', 'Z'],
   who: ['HH', 'UW1'], two: ['T', 'UW1'],
+  // Short O despite the open-first-syllable rule; also keeps "nobody" right.
+  body: ['B', 'AA1', 'D', 'IY0'],
 };
+
+/**
+ * O in an open first syllable -- one consonant, then a vowel -- is long:
+ * "No-lan", "o-pen", "o-ver", "no-body", "ro-bot". It came out as AA, so the
+ * stressed OH in "Nolan" was never generated at all. Limited to the first
+ * syllable and to O (later syllables and other vowels have far more short
+ * exceptions); R/W/X/Y are excluded because they form their own patterns.
+ * Known misses such as "copy" or "model" read OW for AA: both open the jaw.
+ */
+function isOpenFirstSyllableO(upper: string, index: number): boolean {
+  if (/[AEIOU]/.test(upper.slice(0, index))) return false;
+  const consonant = upper[index + 1] ?? '';
+  const vowel = upper[index + 2] ?? '';
+  return consonant !== '' && !VOWEL_LETTERS.has(consonant) && !/[RWX]/.test(consonant) && /[AEIOU]/.test(vowel);
+}
 
 /**
  * "moved", "liked", "names": a silent-e stem plus an inflection. Resolving the
@@ -171,6 +188,11 @@ export function phonemeGroups(word: string): string[] {
     } else if (letter === 'O' && index > 0 && index === upper.length - 1 && !VOWEL_LETTERS.has(upper[index - 1]!)) {
       // Open final O is long: go, no, so, hello, photo.
       groups.push('OW');
+    } else if (letter === 'O' && isOpenFirstSyllableO(upper, index)) {
+      // The one place spelling is real evidence of stress: a long open first
+      // syllable carries it ("NO-lan", "O-pen"). Marking it lets the word's
+      // duration favour it and the track protect it.
+      groups.push('OW1');
     } else if (SINGLE_VOWELS[letter]) {
       groups.push(SINGLE_VOWELS[letter]!);
     } else if (CONSONANTS[letter]) {
@@ -199,13 +221,22 @@ const CONSONANT_WEIGHT = 1;
  */
 const REDUCED_VOWEL_WEIGHT = 1.1;
 const DIPHTHONG_WEIGHT = 2.2;
+/**
+ * A diphthong known to be stressed takes more of its word. Inside a
+ * multisyllable word ("Nolan", "open", "nobody") the consonants were already at
+ * the dwell donor floor, so the stressed OH could not borrow the time it needed
+ * to show; the word's other sounds give it up here instead, and the word does
+ * not get longer.
+ */
+const STRESSED_DIPHTHONG_WEIGHT = 2.6;
 const DIPHTHONG_GROUPS = new Set(['AY', 'AW', 'EY', 'OW', 'OY']);
 
 function groupWeight(group: string): number {
   const symbol = group.replace(/\d+$/, '');
   if (!VOWEL_GROUPS.has(symbol)) return CONSONANT_WEIGHT;
   if (group.endsWith('0')) return REDUCED_VOWEL_WEIGHT;
-  return DIPHTHONG_GROUPS.has(symbol) ? DIPHTHONG_WEIGHT : VOWEL_WEIGHT;
+  if (!DIPHTHONG_GROUPS.has(symbol)) return VOWEL_WEIGHT;
+  return group.endsWith('1') ? STRESSED_DIPHTHONG_WEIGHT : DIPHTHONG_WEIGHT;
 }
 
 /**

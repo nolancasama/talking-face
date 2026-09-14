@@ -89,6 +89,24 @@ export const MIN_VOWEL_DWELL_MS = {
 } as const;
 /** A consonant never gives up time below this. */
 export const DWELL_DONOR_FLOOR_MS = 45;
+
+/**
+ * Nucleus hold: through the core of a full (non-reduced) vowel, the vowel's
+ * dominance over the lip/jaw shape it actually specifies rises to this multiple,
+ * ramping from 1 at its edges over NUCLEUS_HOLD_RAMP_MS.
+ *
+ * Why: a following consonant's anticipation was holding the middle of the vowel
+ * between two captured shapes. In "moved" the approaching V kept the /u/ almost
+ * exactly between the ROUND and SH_CH photographs (weights 0.50-0.57) for its
+ * whole length -- two pursed-lip photos alpha-blended into a doubled, "fat"
+ * mouth -- while "Too blue", with the identical target, sat clearly on ROUND.
+ * Edges are untouched, so anticipation INTO the vowel (the early rounding of
+ * "too") and transitions out of it keep their timing. Closure and tongue are
+ * never held: M/B/P, F/V, L and TH keep their gestures.
+ */
+export const NUCLEUS_HOLD = 2;
+const NUCLEUS_HOLD_RAMP_MS = 30;
+const HELD_CONTROLS: readonly ArticulationControl[] = ['jawOpen', 'lipWidth', 'lipRound'];
 /**
  * A phrase-final vowel may also borrow this much from the pause after it. The
  * visual track already leads audio by VISUAL_LEAD_MS, so this stays inside the
@@ -366,6 +384,20 @@ function influence(segment: ArticulationSegment, ms: number, control: Articulati
   return segment.weight * dominance(segment.profile, control, segment.stress) * temporal(segment, ms, control);
 }
 
+/** NUCLEUS_HOLD multiplier for the segment containing `ms` (1 when not held). */
+export function nucleusHold(segment: ArticulationSegment, ms: number, control: ArticulationControl): number {
+  const { profile } = segment;
+  if (profile.class !== 'vowel' || !HELD_CONTROLS.includes(control)) return 1;
+  // Only the shape this vowel specifies (an unrounded vowel does not hold rounding).
+  if ((profile.controls?.[control] ?? 1) < 1) return 1;
+  // Reduced vowels are meant to yield.
+  if (profile.visualStrength < 1 || stressScale(profile, segment.stress) < 1) return 1;
+  if (!(ms > segment.startMs && ms < segment.endMs)) return 1;
+  const ramp = Math.min(NUCLEUS_HOLD_RAMP_MS, (segment.endMs - segment.startMs) / 3);
+  const edge = Math.min(ms - segment.startMs, segment.endMs - ms);
+  return 1 + (NUCLEUS_HOLD - 1) * Math.min(1, edge / ramp);
+}
+
 /** 1 across a critical segment's core, ramping at its edges; widened when brief. */
 export function criticalEnvelope(segment: ArticulationSegment, ms: number): number {
   const centre = (segment.startMs + segment.endMs) / 2;
@@ -400,8 +432,10 @@ function weightAt(
   ms: number,
   control: ArticulationControl,
 ): number {
-  const weight = influence(segments[j]!, ms, control);
-  return j === evaluation.index && segments[j]!.barrier ? weight * evaluation.restShare : weight;
+  const segment = segments[j]!;
+  const weight = influence(segment, ms, control);
+  if (j !== evaluation.index) return weight;
+  return segment.barrier ? weight * evaluation.restShare : weight * nucleusHold(segment, ms, control);
 }
 
 function evaluate(track: ArticulationTrack, ms: number): Evaluation | null {
@@ -505,6 +539,8 @@ export interface CoarticulationDebug {
   readonly part: ArticulationSegment['part'];
   /** For a pause: holding REST, or still relaxing out of the last sound. */
   readonly rest: 'barrier' | 'relaxing' | 'short-pause' | null;
+  /** NUCLEUS_HOLD multiplier on the vowel's defining control right now (1 = none). */
+  readonly nucleusHold: number;
 }
 
 /** Below this share a neighbour's influence is not worth reporting. */
@@ -557,5 +593,6 @@ export function describeCoarticulation(track: ArticulationTrack, ms: number): Co
       : !current.barrier ? 'short-pause'
       : evaluation.low < evaluation.index ? 'relaxing'
       : 'barrier',
+    nucleusHold: nucleusHold(current, ms, salientControl(current.profile)),
   };
 }

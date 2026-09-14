@@ -590,3 +590,44 @@ than estimated reaches REST before its audio ends. A half-closed mouth still
 resolves to the TEETH_LIP photo for a frame when lips approach closure, and a
 low-jaw /u/ splits between the ROUND and SH_CH photos. Both are photo-blending
 limits.
+
+---
+
+## 2026-09-14 — Stressed internal OH and the "fat" /u/ of "moved"
+
+**Context.** On a real face, "No." looked right but the "No-" of "Nolan."
+barely moved the lips, and the (now visible) /u/ of "moved" looked flat, fat
+and over-pursed. "Too blue.", L and SH/CH looked good.
+
+**Findings (traced before changing anything).**
+- "Nolan" was estimated as `N AA L AE N`: no OH existed. Same for "open",
+  "over", "nobody", "notebook". Standalone "No" only worked through the
+  word-final-O rule. The engine already protected internal diphthongs ("going",
+  from the lexicon, showed rounding for 200ms); L was not stealing the vowel.
+- Every full /u/ ("Too blue", "moon", "food", "moved") has the same target,
+  lipRound 1.0, and lipWidth stays 0.12-0.22 during it -- width was never
+  elevated. The difference was pose resolution: in "moved"/"move" the approaching
+  V held the vowel almost exactly between the ROUND and SH_CH photographs
+  (weights 0.50-0.57) for its whole length, i.e. two pursed-lip photos
+  alpha-blended into doubled lip edges; "Too blue" sat at ROUND 0.75-0.82.
+
+**Decisions.**
+- *Estimator*: an O in an open first syllable (one consonant, then a vowel) is
+  `OW1`; "body" is in the lexicon. Stressed diphthongs weigh 2.6 (unstressed 2.2)
+  when a word's duration is shared out, so the stressed OH takes time from the
+  rest of the word without lengthening it. Stress is only marked where spelling
+  is evidence for it; a blanket "first syllable is stressed" rule was rejected
+  because it would shorten the OH of "hello".
+- *Nucleus hold* (`coarticulation.ts`): through the core of a full vowel, its
+  dominance over the jaw/width/round controls it actually specifies ramps to 2x
+  (1x at its edges). Neighbours can no longer park the middle of a vowel
+  between two captured shapes; anticipation into the vowel and transitions out
+  of it keep their timing. Closure and tongue are never held, and reduced vowels
+  are not held, so M/B/P, F/V, L, TH and schwa behave as before.
+
+**Rejected.** Lowering the /u/ target to a "moderate" ~0.85 rounding: with
+two-photograph blending that value lies between ROUND and SH_CH, so it would
+have put every /u/ -- "Too blue" included -- into the same doubled-lip blend. A
+round-suppresses-width constraint: traces showed width was never high during
+rounding. Weakening L, or delaying L anticipation: L had little claim on the lips
+and was not the cause.

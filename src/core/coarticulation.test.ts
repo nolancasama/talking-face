@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { POSE_ARTICULATION, VISUAL_LEAD_MS, poseWeights, smoothArticulation } from './articulation';
+import { POSE_ARTICULATION, poseWeights } from './articulation';
 import type { Articulation } from './articulation';
 import {
   BARRIER_SILENCE_MS,
   MIN_VOWEL_DWELL_MS,
+  NUCLEUS_HOLD,
   buildArticulationTrack,
   coarticulate,
   describeCoarticulation,
+  nucleusHold,
 } from './coarticulation';
+import { SIMULATED_FRAME_MS, longestVisibleMs, poseWeightOf, simulatePlayback } from './playbackSimulation';
 import type { ArticulationSegment, ArticulationTrack } from './coarticulation';
 import { TRAILING_REST_MS } from './visemeMap';
 import type { SpeechCue, SpeechToken } from './types';
@@ -304,35 +307,8 @@ describe('describeCoarticulation', () => {
 // correct in the target and still never be visible once rendered.
 // ---------------------------------------------------------------------------
 
-const FRAME_MS = 1000 / 60;
-
-interface RenderedFrame {
-  /** Visual (track) time of the frame. */
-  readonly ms: number;
-  readonly articulation: Articulation;
-}
-
-function render(track: ArticulationTrack): RenderedFrame[] {
-  const frames: RenderedFrame[] = [];
-  let current = coarticulate(track, VISUAL_LEAD_MS);
-  for (let clock = 0; clock <= track.durationMs; clock += FRAME_MS) {
-    const ms = clock + VISUAL_LEAD_MS;
-    current = smoothArticulation(current, coarticulate(track, ms), FRAME_MS);
-    frames.push({ ms, articulation: current });
-  }
-  return frames;
-}
-
-/** Longest continuous on-screen time for which `holds` is true. */
-function longestVisibleMs(frames: readonly RenderedFrame[], holds: (a: Articulation) => boolean): number {
-  let best = 0;
-  let run = 0;
-  for (const frame of frames) {
-    run = holds(frame.articulation) ? run + 1 : 0;
-    best = Math.max(best, run);
-  }
-  return best * FRAME_MS;
-}
+const FRAME_MS = SIMULATED_FRAME_MS;
+const render = simulatePlayback;
 
 describe('perceptual timing: rounded vowel in "moved"', () => {
   // Durations as the Web Speech estimator produces them for "moved".
@@ -485,5 +461,35 @@ describe('preserved behaviour', () => {
     const l = segment(tooBlue, 'L');
     expect(at(tooBlue, l.endMs - 10).lipRound).toBeGreaterThan(0.5);
     expect(at(tooBlue, segment(tooBlue, 'T').endMs - 10).lipRound).toBeGreaterThan(0.25);
+  });
+});
+
+describe('nucleus hold', () => {
+  const moved = speak(['M', 77], ['UW1', 130], ['V', 77], ['D', 77]);
+  const uw = segment(moved, 'UW');
+
+  it("holds a full vowel's defining shape through its core, not at its edges", () => {
+    expect(nucleusHold(uw, middle(uw), 'lipRound')).toBe(NUCLEUS_HOLD);
+    expect(nucleusHold(uw, uw.startMs + 1, 'lipRound')).toBeLessThan(1.1);
+    expect(nucleusHold(uw, uw.endMs - 1, 'lipRound')).toBeLessThan(1.1);
+  });
+
+  it('never holds closure or tongue, or a lip shape the vowel does not specify', () => {
+    expect(nucleusHold(uw, middle(uw), 'lipClosure')).toBe(1);
+    expect(nucleusHold(uw, middle(uw), 'tongue')).toBe(1);
+    // A rounded vowel is lax about spread.
+    expect(nucleusHold(uw, middle(uw), 'lipWidth')).toBe(1);
+  });
+
+  it('does not hold reduced vowels', () => {
+    const track = speak(['B', 70], ['AH0', 120], ['T', 70]);
+    const schwa = segment(track, 'AX');
+    expect(nucleusHold(schwa, middle(schwa), 'jawOpen')).toBe(1);
+  });
+
+  it('keeps a following V from parking "moved" between two rounded photographs', () => {
+    const length = uw.endMs - uw.startMs;
+    const core = render(moved).filter((frame) => frame.ms >= uw.startMs + length * 0.35 && frame.ms <= uw.startMs + length * 0.75);
+    expect(Math.max(...core.map((frame) => poseWeightOf(frame.articulation, 'ROUND')))).toBeGreaterThan(0.6);
   });
 });

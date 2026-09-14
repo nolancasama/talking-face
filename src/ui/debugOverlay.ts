@@ -97,6 +97,7 @@ export function describeSpeechSound(speech: CoarticulationDebug): string {
     const notes = [
       speech.part !== 'whole' ? speech.part : '',
       speech.dwellMs > 0 ? (speech.phraseFinal ? 'final-vowel protect' : 'dwell') : '',
+      speech.nucleusHold > 1.05 ? `hold ×${speech.nucleusHold.toFixed(1)}` : '',
     ].filter(Boolean).join(' ');
     parts.push(`${speech.sourceMs.toFixed(0)}ms${visible}${notes ? ` · ${notes}` : ''}`);
   }

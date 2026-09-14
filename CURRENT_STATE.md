@@ -92,10 +92,19 @@ Also unverified on a device: camera capture flow, the quality-gate thresholds
    "Hello." the row should read `WAITING FOR SPEECH START · …ms` with the face
    at REST until the voice is audible. If it ever reads `STARTED via fallback`,
    that voice does not fire onstart — note which one.
-6. **Perceptual timing pass (2026-09-14, uncommitted, traced + tested, not yet
-   re-seen on a face).** The live coarticulation engine was tested on a real
-   face: Too blue / Kick the ball / She chose shoes / F/V / bilabials were good;
-   "moved", "hello" and "Think about this" were not. Fixes (see DESIGN_DECISIONS):
+6. **Stressed internal OH + /u/ blend fix (2026-09-14, uncommitted, traced +
+   tested, not yet re-seen on a face).** After the timing pass went live, "No-"
+   in "Nolan." was invisible (estimator emitted no OH) and "moved" looked fat
+   (its /u/ sat between the ROUND and SH_CH photos). Fixed with the open-first-
+   syllable O rule + stressed diphthong weighting, and a nucleus hold in the
+   track (see DESIGN_DECISIONS). Re-test on the face: "No.", "Nolan.",
+   "Nobody.", "Notebook.", "Going.", "Open." (weakest: utterance-initial),
+   "Move.", "Moved.", "Moon.", "Food.", "Too blue.", "Hello, Lily.".
+   `src/tts/lipSyncScenarios.test.ts` encodes each real-face phrase end to end;
+   `src/core/playbackSimulation.ts` is the shared render simulation.
+7. **Perceptual timing pass (2026-09-14, live).** The coarticulation engine was
+   tested on a real face: Too blue / Kick the ball / She chose shoes / F/V /
+   bilabials were good; "moved", "hello" and "Think about this" were not. Fixes (see DESIGN_DECISIONS):
    estimator ("moved" had no /u/, "hello"/"go" no OH), minimum vowel dwell
    borrowed from consonants, phrase-final REST relaxation, diphthong 60/40 with
    glide undershoot, OW → OPEN_ROUND target, tongue smoothing 12ms. Re-test on
